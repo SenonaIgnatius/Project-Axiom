@@ -55,6 +55,15 @@ class Project(Base):
     
     # Metadata & Data Source Tracking
     data_source = Column(String(128), default="real:data/paimana/flash_report.pdf")
+    # Traceability back to the PAIMANA flash report
+    official_name = Column(String(512), nullable=True)
+    agency = Column(String(255), nullable=True)
+    report_state = Column(String(255), nullable=True)
+    revised_end_date = Column(String(32), nullable=True)
+    source_page = Column(Integer, nullable=True)
+    also_on_pages = Column(JSON, nullable=True)
+    report_note = Column(String(1024), nullable=True)
+    verified_basis = Column(String(32), default="illustrative")
     
     # Geographic Location & Satellite geometry
     latitude = Column(Float, nullable=True)

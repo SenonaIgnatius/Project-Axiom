@@ -65,6 +65,8 @@ class RiskEngine:
         sensor_health_score: float = 85.0,
         rainfall_exposure: float = 10.0,
         photo_gap: Optional[float] = None,
+        rainfall_available: bool = True,
+        discrepancy_basis: str = "illustrative",
     ) -> Tuple[int, str, str, Dict[str, FactorDetail]]:
         """
         Computes the primary transparent weighted risk formula (0-100).
@@ -126,8 +128,14 @@ class RiskEngine:
             normalized_score=round(norm_discrepancy, 1),
             weight=w3,
             weighted_contribution=round(contrib_discrepancy, 1),
-            description="Mismatch between reported progress and independent satellite/photo estimates.",
-            data_source="real:Sentinel-2_NDBI+YOLOv8_photos",
+            description=(
+                "Gap between reported progress and the verified figure shown above it."
+                if discrepancy_basis == "photo" else
+                "Gap between reported progress and the verified figure shown above it — currently an "
+                "illustrative stand-in until live satellite/photo verification is run."
+            ),
+            data_source=("real:YOLOv8_site_photo" if discrepancy_basis == "photo"
+                         else "illustrative:verified_progress_stand_in"),
         )
 
         factors = {
@@ -138,8 +146,8 @@ class RiskEngine:
                 normalized_score=round(norm_budget, 1),
                 weight=w1,
                 weighted_contribution=round(contrib_budget, 1),
-                description="Expenditure to date vs expected spend given elapsed timeline.",
-                data_source="real:data/paimana/flash_report.pdf",
+                description="Expenditure to date vs spend expected by now under the original cost and schedule.",
+                data_source="derived:PAIMANA flash report Dec 2025 (cost, expenditure, dates)",
             ),
             "schedule_slippage": FactorDetail(
                 name="Schedule Slippage",
@@ -148,11 +156,10 @@ class RiskEngine:
                 normalized_score=round(norm_slippage, 1),
                 weight=w2,
                 weighted_contribution=round(contrib_slippage, 1),
-                description="Elapsed project timeline % minus reported physical progress %.",
-                data_source="real:data/paimana/flash_report.pdf",
+                description="Share of the original timeline elapsed minus reported physical progress %.",
+                data_source="derived:PAIMANA flash report Dec 2025 (progress, dates)",
             ),
             "visual_discrepancy": disc_factor,
-            "photo_gap": disc_factor,
             "sensor_anomaly": FactorDetail(
                 name="Sensor Telemetry Anomaly",
                 raw_value=round(sensor_health_score, 1),
@@ -170,12 +177,61 @@ class RiskEngine:
                 normalized_score=round(norm_rainfall, 1),
                 weight=w5,
                 weighted_contribution=round(contrib_rainfall, 1),
-                description="30-day cumulative precipitation vs seasonal regional baseline.",
-                data_source="real:data/rainfall.csv",
+                description=("30-day cumulative precipitation vs seasonal regional baseline."
+                             if rainfall_available else
+                             "No rainfall record for this site yet — contributes 0 until one is added."),
+                data_source="real:data/rainfall.csv" if rainfall_available else "unavailable",
             ),
         }
 
         return composite_score, risk_level, status, factors
+
+    @classmethod
+    def generate_explanation(
+        cls,
+        score: int,
+        risk_level: str,
+        status: str,
+        factors: Dict[str, FactorDetail],
+        mismatch_level: str = "low",
+        discrepancy_basis: str = "illustrative",
+    ) -> str:
+        """
+        Turns the weighted factor breakdown into a plain-language sentence,
+        so a non-technical reviewer doesn't have to parse the formula by hand.
+        """
+        ranked = sorted(factors.values(), key=lambda f: f.weighted_contribution, reverse=True)
+        top = ranked[0]
+        second = ranked[1] if len(ranked) > 1 else None
+
+        level_phrase = {
+            "low": "a low-risk profile",
+            "medium": "a moderate risk profile that's worth monitoring",
+            "high": "a high-risk profile that needs attention",
+        }.get(risk_level, "a risk profile")
+
+        lead = f"This project scores {score}/100 — {level_phrase}."
+
+        driver_sentence = f" The biggest driver is {top.name.lower()} ({top.weighted_contribution:.0f} of the {score} points)"
+        if second and second.weighted_contribution >= 5.0:
+            driver_sentence += f", followed by {second.name.lower()} ({second.weighted_contribution:.0f} points)."
+        else:
+            driver_sentence += "."
+
+        flag_sentence = ""
+        if mismatch_level == "high_red_flag":
+            if discrepancy_basis == "photo":
+                flag_sentence = (
+                    " The reported progress and the site-photo estimate disagree by enough that this is "
+                    "flagged as a discrepancy, not just normal review variance."
+                )
+            else:
+                flag_sentence = (
+                    " The gap between reported progress and the verified figure is large enough to flag — "
+                    "note the verified figure is an illustrative stand-in until live verification is run."
+                )
+
+        return (lead + driver_sentence + flag_sentence).strip()
 
     @classmethod
     async def assess_project_risk(
@@ -205,8 +261,15 @@ class RiskEngine:
         sat_estimate = sat_result["satellite_estimated_progress_pct"]
         disc_sat = sat_result["discrepancy_satellite"]
 
+        # The NDBI result above is a labelled simulation on a random grid; it is kept for
+        # metadata only. Scoring uses the same verified figure shown to the user (an
+        # illustrative stand-in, or a real YOLOv8 estimate once a site photo is uploaded),
+        # so the risk factor and the claim-vs-evidence panel can never disagree.
+        sat_estimate = project.verified_progress
+        disc_sat = abs(project.reported_progress - sat_estimate)
+
         # 2. Field Photo Estimate & Discrepancy
-        photo_estimate = project.photo_estimated_progress if project.photo_estimated_progress > 0 else sat_estimate
+        photo_estimate = project.photo_estimated_progress if (project.photo_estimated_progress or 0) > 0 else sat_estimate
         disc_photo = abs(project.reported_progress - photo_estimate)
 
         # 3. Combined Discrepancy (max or weighted mismatch)
@@ -215,7 +278,9 @@ class RiskEngine:
         # 4. Sensor & Weather
         asset_id = f"ASSET-{project.id}"
         asset_health = SensorService.get_asset_health(asset_id)
-        weather_data = WeatherService.get_weather_for_project(project.id, project.latitude, project.longitude)
+        weather_data = WeatherService.get_weather_for_project(
+            project.id, project.latitude, project.longitude, project_code=project.project_code
+        )
 
         # 5. Primary Formula Score
         score, risk_lvl, status, factors = cls.calculate_weighted_risk(
@@ -224,6 +289,8 @@ class RiskEngine:
             combined_discrepancy=combined_disc,
             sensor_health_score=asset_health["current_health_score"],
             rainfall_exposure=weather_data["rainfall_risk_score"],
+            rainfall_available=weather_data.get("available", True),
+            discrepancy_basis=project.verified_basis or "illustrative",
         )
 
         # 6. Predictive ML (Sentinel gradient-boosted model)
@@ -271,6 +338,11 @@ class RiskEngine:
             discrepancy_photo=round(disc_photo, 1),
             combined_discrepancy=round(combined_disc, 1),
             mismatch_level=mismatch_level
+        )
+
+        explanation_text = cls.generate_explanation(
+            score, risk_lvl, status, factors, mismatch_level,
+            discrepancy_basis=project.verified_basis or "illustrative",
         )
 
         # 8. K-Means Cluster Assignment
@@ -329,7 +401,8 @@ class RiskEngine:
             discrepancy_details=discrepancy_details,
             predictive_ml=predictive_ml,
             formula=formula_str,
-            data_source="hybrid:real(paimana,rainfall,photos,sentinel2)+simulated(sensors)",
+            explanation=explanation_text,
+            data_source="hybrid:derived(real PAIMANA Dec 2025)+illustrative(verified)+simulated(sensors)",
             calculated_at=datetime.utcnow().isoformat(),
         )
 

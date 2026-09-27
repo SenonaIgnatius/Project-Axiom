@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.satellite_image_cache import SatelliteImageCache
 from app.services.satellite_service import simulate_sentinel2_change_detection
+from app.services.image_diff_service import detect_change_region
 from app.config import settings
 
 logger = logging.getLogger("sentinel-satellite-router")
@@ -48,6 +49,8 @@ async def get_satellite_change_detection(
     placeholder_cloud_cover = float(result.pop("cloud_cover_pct", 2.1) or 2.1)
     result.pop("data_source", None)
 
+    is_project_specific_pair = False
+
     if cache_row:
         image_source = "Copernicus Sentinel-2 L2A (CDSE Cached)"
         before_date = cache_row.before_scene_date or project.before_date or "2024-03-10"
@@ -59,9 +62,10 @@ async def get_satellite_change_detection(
         fetched_at = cache_row.fetched_at.isoformat() if cache_row.fetched_at else None
         before_image_path = cache_row.before_image_path
         after_image_path = cache_row.after_image_path
+        is_project_specific_pair = True
     else:
         # Fallback: strictly check local filesystem for pre-existing static tiles without making network calls
-        image_source = "Fallback Static Tile (Local Pre-rendered)"
+        image_source = "Cached site imagery (capture source not yet confirmed)"
         before_date = project.before_date or "2024-03-10"
         after_date = project.after_date or "2026-08-12"
         cloud_cover_before = None
@@ -70,19 +74,55 @@ async def get_satellite_change_detection(
         fetch_status = "uncached_fallback"
         fetched_at = None
 
-        public_sat_dir = Path(__file__).resolve().parent.parent.parent.parent / "sentinel" / "public" / "satellite"
+        # Fallback location: the already-mounted satellite cache directory
+        # (a separate "sentinel/public/satellite" path was referenced here
+        # previously but never existed on disk, so this always 404'd).
+        public_sat_dir = settings.SATELLITE_CACHE_DIR
         local_before = public_sat_dir / f"{project.id}_before.jpg"
         local_after = public_sat_dir / f"{project.id}_after.jpg"
 
         if local_before.exists() and local_after.exists():
             before_image_path = str(local_before)
             after_image_path = str(local_after)
+            is_project_specific_pair = True
         else:
-            logger.warning(f"No cached Sentinel-2 imagery or local static tile found for {project_id}. Serving default asset.")
-            before_image_path = str(public_sat_dir / "roads_before.jpg")
-            after_image_path = str(public_sat_dir / "roads_after.jpg")
+            # No project-specific pair — fall back to a sector-appropriate
+            # generic tile rather than always defaulting to "roads" regardless
+            # of what this project actually is.
+            sector_key = (project.sector or "").strip().lower()
+            sector_fallback = {
+                "roads": "roads",
+                "railways": "railways",
+                "power": "power",
+                "water": "water",
+            }.get(sector_key, "roads")
+            sector_before = public_sat_dir / f"{sector_fallback}_before.jpg"
+            sector_after = public_sat_dir / f"{sector_fallback}_after.jpg"
+
+            if sector_before.exists() and sector_after.exists():
+                logger.warning(
+                    f"No project-specific imagery for {project_id} — using {sector_fallback} sector fallback."
+                )
+                before_image_path = str(sector_before)
+                after_image_path = str(sector_after)
+            else:
+                logger.warning(f"No cached Sentinel-2 imagery or local static tile found for {project_id}. Serving default asset.")
+                before_image_path = str(public_sat_dir / "roads_before.jpg")
+                after_image_path = str(public_sat_dir / "roads_after.jpg")
+
+    detected_change_box = None
+    if is_project_specific_pair:
+        try:
+            detected_change_box = detect_change_region(
+                Path(before_image_path),
+                Path(after_image_path),
+                aoi_pct=project.aoi_json,
+            )
+        except Exception as e:
+            logger.warning(f"Change-region diff failed for {project_id}: {e}")
 
     result.update({
+        "detected_change_box": detected_change_box,
         "project_name": project.name,
         "latitude": lat,
         "longitude": lng,

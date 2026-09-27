@@ -32,11 +32,11 @@ class Settings(BaseModel):
     # Database configuration (PostgreSQL target, SQLite zero-config default)
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        f"sqlite+aiosqlite:///{DATA_DIR.as_posix()}/sentinel_v2.db"
+        f"sqlite+aiosqlite:///{DATA_DIR.as_posix()}/sentinel_v3.db"
     )
     SYNC_DATABASE_URL: str = os.getenv(
         "SYNC_DATABASE_URL",
-        f"sqlite:///{DATA_DIR.as_posix()}/sentinel_v2.db"
+        f"sqlite:///{DATA_DIR.as_posix()}/sentinel_v3.db"
     )
     
     # YOLOv8 Vision Model

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background square matching the header box -->
+  <rect width="32" height="32" rx="4" fill="#09090b" />
+  <!-- Crisp high-contrast border -->
+  <rect x="1.5" y="1.5" width="29" height="29" rx="3" fill="none" stroke="#f4f4f5" stroke-width="2" />
+  <!-- Centered monospace bold 'PS' text -->
+  <text 
+    x="16" 
+    y="21" 
+    font-family="'JetBrains Mono', 'Courier New', monospace" 
+    font-size="14" 
+    font-weight="900" 
+    letter-spacing="0.5px"
+    fill="#ffffff" 
+    text-anchor="middle" 
+    dominant-baseline="alphabetic"
+  >PS</text>
+</svg>

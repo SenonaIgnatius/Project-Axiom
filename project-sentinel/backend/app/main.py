@@ -14,6 +14,7 @@ from app.routers import (
     risk_router,
     pipeline_router,
     satellite_router,
+    insights_router,
 )
 from app.routers.projects import seed_default_projects
 
@@ -95,6 +96,7 @@ app.include_router(weather_router, prefix=settings.API_V1_STR)
 app.include_router(risk_router, prefix=settings.API_V1_STR)
 app.include_router(pipeline_router, prefix=settings.API_V1_STR)
 app.include_router(satellite_router, prefix=settings.API_V1_STR)
+app.include_router(insights_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")

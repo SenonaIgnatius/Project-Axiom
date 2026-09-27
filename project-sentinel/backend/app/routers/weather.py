@@ -33,4 +33,6 @@ async def get_project_weather(project_id: str, db: AsyncSession = Depends(get_db
         rainfall_7d_forecast_mm=0.0,
         rainfall_risk_score=result["rainfall_exposure"],
         readings=[WeatherPoint(**p) for p in result["readings"]],
+        available=result.get("available", True),
+        data_source=result.get("data_source", "real:data/rainfall.csv"),
     )

@@ -23,6 +23,36 @@ class SensorService:
 
     _cached_df: Optional[pd.DataFrame] = None
 
+    # In-memory scenario readings injected from the UI ("simulate" buttons),
+    # keyed by project id. Never written to disk; cleared by the "normal" scenario.
+    _overrides: Dict[str, Dict[str, float]] = {}
+
+    SCENARIOS = {
+        "vibration_spike": {"vibration_mm_s": 8.2},        # above the 7.1 mm/s critical limit
+        "thermal_overload": {"temperature_c": 71.5},       # above the 68 °C critical limit
+        "strain_critical": {"strain_microstrain": 1480.0}, # above the 1400 με critical limit
+    }
+
+    @staticmethod
+    def _project_key(asset_id: str, project_id: Optional[str] = None) -> str:
+        if project_id:
+            return project_id
+        for prefix in ("ASSET-", "AST-"):
+            if asset_id.startswith(prefix):
+                return asset_id[len(prefix):]
+        return asset_id
+
+    @classmethod
+    def simulate_scenario(cls, asset_id: str, scenario: str) -> str:
+        key = cls._project_key(asset_id)
+        if scenario == "normal":
+            cls._overrides.pop(key, None)
+        elif scenario in cls.SCENARIOS:
+            cls._overrides[key] = dict(cls.SCENARIOS[scenario])
+        else:
+            raise ValueError(f"Unknown scenario '{scenario}'")
+        return key
+
     LIMITS = {
         "vibration": {"alert": 4.5, "critical": 7.1, "unit": "mm/s"},
         "temperature": {"alert": 55.0, "critical": 68.0, "unit": "deg_C"},
@@ -52,30 +82,41 @@ class SensorService:
         df = cls.get_sensors_df()
 
         # Find matching asset rows (empty frame when sensors.csv is absent)
+        key = cls._project_key(asset_id, project_id)
         if df.empty:
             matched = df
         else:
-            matched = df[(df["asset_id"] == asset_id) | (df["project_id"] == project_id) | (df["project_id"] == asset_id.replace("ASSET-", ""))]
-
-        if matched.empty and not df.empty:
-            # Fallback to first available asset in static file
-            matched = df[df["asset_id"] == df["asset_id"].iloc[0]]
+            matched = df[(df["asset_id"] == asset_id) | (df["project_id"] == key)]
 
         if matched.empty:
+            # No telemetry for this asset. Previously this borrowed the first asset
+            # in the file (or hardcoded "healthy" values); say so instead. A neutral
+            # health of 100 means no sensor penalty is added to the risk score.
             return {
                 "asset_id": asset_id,
-                "project_id": project_id,
-                "current_health_score": 95.0,
-                "status": "healthy",
-                "vibration_rms": 1.8,
-                "temperature_c": 28.5,
-                "strain_microstrain": 340.0,
-                "tilt_deg": 0.15,
-                "anomaly_z_score": 0.2,
-                "data_source": "simulated:data/sensors.csv",
-                "last_updated": "2026-08-27 12:00:00",
+                "project_id": key,
+                "available": False,
+                "current_health_score": 100.0,
+                "status": "unknown",
+                "vibration_rms": None,
+                "temperature_c": None,
+                "strain_microstrain": None,
+                "tilt_deg": None,
+                "anomaly_z_score": 0.0,
+                "data_source": "unavailable: no telemetry for this asset",
+                "last_updated": "",
                 "history": [],
             }
+
+        override = cls._overrides.get(key)
+        if override:
+            injected = matched.iloc[-1].copy()
+            injected["timestamp"] = (pd.to_datetime(injected["timestamp"]) + pd.Timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+            for col, val in override.items():
+                injected[col] = val
+            matched = pd.concat([matched, injected.to_frame().T], ignore_index=True)
+            for col in ("vibration_mm_s", "temperature_c", "strain_microstrain", "tilt_deg"):
+                matched[col] = pd.to_numeric(matched[col])
 
         # Latest window (last 30 points)
         recent = matched.tail(30)
@@ -158,6 +199,8 @@ class SensorService:
             "strain_microstrain": round(strain_latest, 1),
             "tilt_deg": round(tilt_latest, 2),
             "anomaly_z_score": round(max_z, 2),
+            "available": True,
+            "simulated_scenario": next((n for n, v in cls.SCENARIOS.items() if override == v), None) if override else None,
             "data_source": "simulated:data/sensors.csv",
             "last_updated": str(latest_row["timestamp"]),
             "history": history_points,

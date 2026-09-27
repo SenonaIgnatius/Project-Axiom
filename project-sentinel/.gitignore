@@ -17,7 +17,7 @@ sentinel.db
 backend/data/*.db
 
 # Generated data & binary cache directories
-backend/data/satellite_cache/
+# satellite_cache/ is committed: the demo site images the frontends show
 backend/data/photos/
 backend/data/uploads/
 

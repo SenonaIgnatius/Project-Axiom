@@ -55,16 +55,17 @@ class WeatherService:
         matched = df[df["project_code_str"].isin(lookup_keys)]
 
         if matched.empty:
-            # Aggregate state / overall baseline fallback from the same static file
-            matched = df
-
-        if matched.empty:
+            # No record for this project. Previously this fell back to the whole file
+            # (every other project's rainfall pooled together) while still labelling it
+            # "real" — so every unmatched project showed the same figures. Say so instead.
             return {
                 "project_id": project_id,
-                "rainfall_30d_total_mm": 25.0,
-                "seasonal_baseline_mm": 50.0,
-                "rainfall_exposure": 20.0,
-                "data_source": "real:data/rainfall.csv",
+                "available": False,
+                "rainfall_30d_total_mm": 0.0,
+                "seasonal_baseline_mm": 0.0,
+                "rainfall_exposure": 0.0,
+                "rainfall_risk_score": 0.0,
+                "data_source": "unavailable: no record for this project in data/rainfall.csv",
                 "readings": [],
             }
 
@@ -92,6 +93,7 @@ class WeatherService:
 
         return {
             "project_id": project_id,
+            "available": True,
             "rainfall_30d_total_mm": round(recent_total, 1),
             "seasonal_baseline_mm": round(all_30d_avg, 1),
             "rainfall_exposure": round(exposure_score, 1),
@@ -102,7 +104,8 @@ class WeatherService:
 
     @classmethod
     def get_weather_for_project(
-        cls, project_id: str, latitude: Optional[float] = None, longitude: Optional[float] = None
+        cls, project_id: str, latitude: Optional[float] = None, longitude: Optional[float] = None,
+        project_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Alias for project rainfall lookup."""
-        return cls.get_project_rainfall(project_id)
+        return cls.get_project_rainfall(project_id, project_code)

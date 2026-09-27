@@ -1,5 +1,7 @@
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
@@ -12,6 +14,8 @@ from app.schemas.project import (
     SiteImagerySchema,
 )
 from app.services.risk_engine import RiskEngine
+from app.services.demo_registry import build_demo_seed
+from app.services.source_page_service import render_source_page
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -86,6 +90,15 @@ async def list_projects(
                 sectorBaselineDeviation=round(p.sector_baseline_deviation or 0.0, 1),
                 clusterLabel=p.cluster_label or "Medium Risk Cluster",
                 dataSource=p.data_source or "real:data/paimana/flash_report.pdf",
+                revisedEndDate=p.revised_end_date,
+                projectCode=p.project_code,
+                officialName=p.official_name,
+                agency=p.agency,
+                reportState=p.report_state,
+                sourcePage=p.source_page,
+                alsoOnPages=p.also_on_pages,
+                reportNote=p.report_note,
+                verifiedBasis=p.verified_basis or "illustrative",
             )
         )
     return response
@@ -155,246 +168,95 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
         sectorBaselineDeviation=round(project.sector_baseline_deviation or 0.0, 1),
         clusterLabel=project.cluster_label or "Medium Risk Cluster",
         dataSource=project.data_source or "real:data/paimana/flash_report.pdf",
+        revisedEndDate=project.revised_end_date,
+        projectCode=project.project_code,
+        officialName=project.official_name,
+        agency=project.agency,
+        reportState=project.report_state,
+        sourcePage=project.source_page,
+        alsoOnPages=project.also_on_pages,
+        reportNote=project.report_note,
+        verifiedBasis=project.verified_basis or "illustrative",
         site=site,
     )
 
 
+@router.get("/{project_id}/source-page")
+async def get_source_page(project_id: str, full: bool = False, db: AsyncSession = Depends(get_db)):
+    """
+    PNG of the PAIMANA flash-report page this project's reported figures come
+    from, with the project's row highlighted.
+    """
+    project = (await db.execute(select(Project).where(Project.id == project_id))).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    if not project.source_page or not project.project_code:
+        raise HTTPException(status_code=404, detail="No PAIMANA source page recorded for this project")
+    path = render_source_page(project.project_code, project.source_page, full=full)
+    if not path:
+        raise HTTPException(status_code=500, detail="Could not render the source page")
+    return FileResponse(path, media_type="image/png")
+
+
+@router.post("/{project_id}/escalate")
+async def escalate_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    SIMULATED escalation: drafts the notice Sentinel would send the implementing
+    agency for a flagged project. Nothing is emailed, messaged or stored.
+    """
+    import hashlib
+    from datetime import datetime
+
+    project = (await db.execute(select(Project).where(Project.id == project_id))).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    now = datetime.utcnow()
+    ref = "SEN-ESC-{}-{}".format(
+        now.strftime("%Y%m%d"),
+        hashlib.sha1(f"{project.id}{now.isoformat()}".encode()).hexdigest()[:6].upper(),
+    )
+    gap = abs((project.reported_progress or 0) - (project.verified_progress or 0))
+    overrun = (project.revised_cost or 0) - (project.original_cost or 0)
+    findings = [
+        f"Reported physical progress: {project.reported_progress:.0f}% "
+        f"(PAIMANA {project.report_month or ''}, PDF page {project.source_page})",
+        f"Verified progress: {project.verified_progress:.1f}% "
+        f"({'site photo, YOLOv8' if project.verified_basis == 'photo' else 'illustrative stand-in — live verification pending'})"
+        f" — gap {gap:.1f} pts",
+        f"Completion: originally {project.expected_end_date or 'n/a'}, now {project.revised_end_date or 'no revised date given'}"
+        f" ({project.delay_months} months late)",
+        f"Cost: ₹{project.original_cost:,.0f} cr → ₹{project.revised_cost:,.0f} cr "
+        f"({'+' if overrun >= 0 else ''}₹{overrun:,.0f} cr); spent ₹{project.expenditure:,.0f} cr",
+        f"Sentinel composite risk score: {project.risk_score}/100 ({project.risk_level})",
+    ]
+    if project.report_note:
+        findings.append(f"Data-quality flag: {project.report_note}")
+
+    return {
+        "simulated": True,
+        "sent": False,
+        "reference": ref,
+        "drafted_at": now.strftime("%Y-%m-%d %H:%M UTC"),
+        "to": project.agency or "Implementing agency",
+        "cc": "Infrastructure & Project Monitoring Division, MoSPI",
+        "subject": f"Request for progress clarification — {project.official_name or project.name} (PAIMANA {project.project_code})",
+        "findings": findings,
+        "requested_action": (
+            "Please confirm the reported physical progress with dated site evidence "
+            "(geotagged photographs or the latest measurement book entry) within 15 days."
+        ),
+        "note": "Simulated for demonstration — no message was sent and nothing was stored.",
+    }
+
+
 async def seed_default_projects(db: AsyncSession) -> int:
     """
-    Seeds projects with initial engineered features from flash_report.pdf.
+    Seeds the demo projects. Reported figures come from the real PAIMANA flash
+    report (Dec 2025) via data/paimana/paimana_projects.json.
     """
-    SEED_DATA = [
-        {
-            "id": "PS-RD-1042",
-            "name": "NH-44 Six-Laning: Sangareddy–Kadthal",
-            "sector": "Roads",
-            "state": "Telangana",
-            "sanctioned_cost": 4820.0,
-            "expenditure": 3110.0,
-            "reported_progress": 78.0,
-            "verified_progress": 61.5,
-            "delay_months": 9,
-            "budget_variance_pct": 14.2,
-            "schedule_slippage": 16.5,
-            "sector_baseline_deviation": -0.8,
-            "last_verified": "2026-08-11",
-            "latitude": 17.6193,
-            "longitude": 78.0871,
-            "zoom": 14,
-            "sat_verified": True,
-            "before_date": "2026-02-18",
-            "after_date": "2026-08-11",
-            "change_detected": 61.5,
-            "aoi_json": [12, 22, 62, 46],
-        },
-        {
-            "id": "PS-RL-2217",
-            "name": "Doubling of Jhansi–Bina Rail Corridor",
-            "sector": "Railways",
-            "state": "Madhya Pradesh",
-            "sanctioned_cost": 2640.0,
-            "expenditure": 2410.0,
-            "reported_progress": 91.0,
-            "verified_progress": 88.2,
-            "delay_months": 1,
-            "budget_variance_pct": 0.5,
-            "schedule_slippage": 2.8,
-            "sector_baseline_deviation": 1.2,
-            "last_verified": "2026-08-14",
-            "latitude": 25.4484,
-            "longitude": 78.5685,
-            "zoom": 14,
-            "sat_verified": True,
-            "before_date": "2026-02-20",
-            "after_date": "2026-08-14",
-            "change_detected": 88.2,
-            "aoi_json": [8, 34, 78, 30],
-        },
-        {
-            "id": "PS-PW-3308",
-            "name": "Talcher Super Thermal Stage-III",
-            "sector": "Power",
-            "state": "Odisha",
-            "sanctioned_cost": 15200.0,
-            "expenditure": 9740.0,
-            "reported_progress": 64.0,
-            "verified_progress": 41.0,
-            "delay_months": 22,
-            "budget_variance_pct": 21.8,
-            "schedule_slippage": 23.0,
-            "sector_baseline_deviation": -2.4,
-            "last_verified": "2026-08-09",
-            "latitude": 20.9497,
-            "longitude": 85.2337,
-            "zoom": 15,
-            "sat_verified": True,
-            "before_date": "2026-02-12",
-            "after_date": "2026-08-09",
-            "change_detected": 41.0,
-            "aoi_json": [22, 18, 52, 54],
-        },
-        {
-            "id": "PS-WT-4471",
-            "name": "Polavaram Left Main Canal Lining",
-            "sector": "Water",
-            "state": "Andhra Pradesh",
-            "sanctioned_cost": 3380.0,
-            "expenditure": 2905.0,
-            "reported_progress": 83.0,
-            "verified_progress": 70.4,
-            "delay_months": 7,
-            "budget_variance_pct": 12.0,
-            "schedule_slippage": 12.6,
-            "sector_baseline_deviation": -0.5,
-            "last_verified": "2026-08-12",
-            "latitude": 17.2473,
-            "longitude": 81.6483,
-            "zoom": 14,
-            "sat_verified": True,
-            "before_date": "2026-02-15",
-            "after_date": "2026-08-12",
-            "change_detected": 70.4,
-            "aoi_json": [6, 40, 84, 22],
-        },
-        {
-            "id": "PS-RD-1088",
-            "name": "Bharatmala Pkg-14: Amritsar–Bathinda Access Control",
-            "sector": "Roads",
-            "state": "Punjab",
-            "sanctioned_cost": 6110.0,
-            "expenditure": 2280.0,
-            "reported_progress": 44.0,
-            "verified_progress": 39.8,
-            "delay_months": 4,
-            "budget_variance_pct": 2.4,
-            "schedule_slippage": 4.2,
-            "sector_baseline_deviation": 0.1,
-            "last_verified": "2026-08-13",
-            "latitude": 30.5476,
-            "longitude": 74.9455,
-            "zoom": 14,
-            "sat_verified": False,
-            "before_date": "2026-02-19",
-            "after_date": "—",
-            "change_detected": 39.8,
-            "aoi_json": [10, 28, 70, 40],
-        },
-        {
-            "id": "PS-RL-2340",
-            "name": "Rishikesh–Karnaprayag Broad Gauge Tunnel T-8",
-            "sector": "Railways",
-            "state": "Uttarakhand",
-            "sanctioned_cost": 8720.0,
-            "expenditure": 6620.0,
-            "reported_progress": 72.0,
-            "verified_progress": 55.1,
-            "delay_months": 16,
-            "budget_variance_pct": 18.2,
-            "schedule_slippage": 16.9,
-            "sector_baseline_deviation": -1.8,
-            "last_verified": "2026-08-08",
-            "latitude": 30.2043,
-            "longitude": 78.8081,
-            "zoom": 15,
-            "sat_verified": True,
-            "before_date": "2026-02-09",
-            "after_date": "2026-08-08",
-            "change_detected": 55.1,
-            "aoi_json": [26, 24, 46, 48],
-        },
-        {
-            "id": "PS-PW-3355",
-            "name": "Green Energy Corridor: Bikaner–Fatehpur 765kV",
-            "sector": "Power",
-            "state": "Rajasthan",
-            "sanctioned_cost": 5490.0,
-            "expenditure": 4120.0,
-            "reported_progress": 79.0,
-            "verified_progress": 77.3,
-            "delay_months": 0,
-            "budget_variance_pct": -1.2,
-            "schedule_slippage": 1.7,
-            "sector_baseline_deviation": 1.5,
-            "last_verified": "2026-08-15",
-            "latitude": 27.9333,
-            "longitude": 74.1667,
-            "zoom": 14,
-            "sat_verified": True,
-            "before_date": "2026-02-21",
-            "after_date": "2026-08-15",
-            "change_detected": 77.3,
-            "aoi_json": [14, 20, 64, 52],
-        },
-        {
-            "id": "PS-WT-4502",
-            "name": "AMRUT 2.0 Bulk Water Supply, Kanpur",
-            "sector": "Water",
-            "state": "Uttar Pradesh",
-            "sanctioned_cost": 1290.0,
-            "expenditure": 640.0,
-            "reported_progress": 55.0,
-            "verified_progress": 52.6,
-            "delay_months": 2,
-            "budget_variance_pct": 1.5,
-            "schedule_slippage": 2.4,
-            "sector_baseline_deviation": 0.4,
-            "last_verified": "2026-08-14",
-            "latitude": 26.4499,
-            "longitude": 80.3319,
-            "zoom": 15,
-            "sat_verified": False,
-            "before_date": "2026-02-17",
-            "after_date": "—",
-            "change_detected": 52.6,
-            "aoi_json": [18, 26, 58, 44],
-        },
-        {
-            "id": "PS-RD-1120",
-            "name": "Zojila Approach Road Realignment",
-            "sector": "Roads",
-            "state": "Ladakh",
-            "sanctioned_cost": 2170.0,
-            "expenditure": 1880.0,
-            "reported_progress": 69.0,
-            "verified_progress": 48.9,
-            "delay_months": 19,
-            "budget_variance_pct": 19.5,
-            "schedule_slippage": 20.1,
-            "sector_baseline_deviation": -2.1,
-            "last_verified": "2026-08-06",
-            "latitude": 34.2769,
-            "longitude": 75.4726,
-            "zoom": 14,
-            "sat_verified": True,
-            "before_date": "2026-02-06",
-            "after_date": "2026-08-06",
-            "change_detected": 48.9,
-            "aoi_json": [8, 30, 76, 34],
-        },
-        {
-            "id": "PS-RL-2401",
-            "name": "Dedicated Freight Corridor Feeder: Dadri Yard",
-            "sector": "Railways",
-            "state": "Uttar Pradesh",
-            "sanctioned_cost": 990.0,
-            "expenditure": 812.0,
-            "reported_progress": 86.0,
-            "verified_progress": 84.7,
-            "delay_months": 0,
-            "budget_variance_pct": -0.8,
-            "schedule_slippage": 1.3,
-            "sector_baseline_deviation": 1.1,
-            "last_verified": "2026-08-15",
-            "latitude": 28.5522,
-            "longitude": 77.5525,
-            "zoom": 15,
-            "sat_verified": True,
-            "before_date": "2026-02-22",
-            "after_date": "2026-08-15",
-            "change_detected": 84.7,
-            "aoi_json": [20, 22, 56, 50],
-        },
-    ]
+    # Real PAIMANA figures + team-set site metadata (see app/services/demo_registry.py)
+    SEED_DATA = build_demo_seed()
 
     count = 0
     projects_list = []
@@ -439,6 +301,20 @@ async def seed_default_projects(db: AsyncSession) -> int:
             change_detected=item["change_detected"],
             aoi_json=item["aoi_json"],
             data_source="real:data/paimana/flash_report.pdf",
+            project_code=item["project_code"],
+            official_name=item["official_name"],
+            agency=item["agency"],
+            report_state=item["report_state"],
+            report_month=item["report_month"],
+            original_cost=item["original_cost"],
+            revised_cost=item["revised_cost"],
+            start_date=item["start_date"],
+            expected_end_date=item["expected_end_date"],
+            revised_end_date=item["revised_end_date"],
+            source_page=item["source_page"],
+            also_on_pages=item["also_on_pages"],
+            report_note=item["report_note"],
+            verified_basis=item["verified_basis"],
         )
         db.add(p)
         projects_list.append(p)
@@ -447,4 +323,12 @@ async def seed_default_projects(db: AsyncSession) -> int:
     if projects_list:
         RiskEngine.train_kmeans_and_validate(projects_list)
     await db.commit()
+
+    # Score every project through the same pipeline the project page uses, so the
+    # register's badges and the detail page can never disagree.
+    for proj in projects_list:
+        try:
+            await RiskEngine.assess_project_risk(proj.id, db)
+        except Exception as e:  # never block seeding on one project
+            logging.getLogger(__name__).warning(f"Initial risk assessment failed for {proj.id}: {e}")
     return count

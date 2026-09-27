@@ -83,6 +83,8 @@ async def classify_photo(
         proj = (await db.execute(stmt)).scalar_one_or_none()
         if proj:
             proj.verified_progress = result["photo_verified_estimate"]
+            proj.photo_estimated_progress = result["photo_verified_estimate"]
+            proj.verified_basis = "photo"
             proj.last_verified = datetime.utcnow().strftime("%Y-%m-%d")
 
     await db.commit()

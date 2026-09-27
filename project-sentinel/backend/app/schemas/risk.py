@@ -49,6 +49,7 @@ class RiskBreakdownResponse(BaseModel):
     discrepancy_details: Optional[DiscrepancyDetails] = None
     predictive_ml: Optional[PredictiveMlDetails] = None
     formula: str
+    explanation: Optional[str] = None
     data_source: str = "hybrid:real(paimana,rainfall,photos)+simulated(sensors)"
     calculated_at: str
 

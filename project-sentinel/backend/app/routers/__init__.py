@@ -5,6 +5,7 @@ from app.routers.weather import router as weather_router
 from app.routers.risk import router as risk_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.satellite import router as satellite_router
+from app.routers.insights import router as insights_router
 
 __all__ = [
     "projects_router",
@@ -14,5 +15,6 @@ __all__ = [
     "risk_router",
     "pipeline_router",
     "satellite_router",
+    "insights_router",
 ]
 

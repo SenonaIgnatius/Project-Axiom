@@ -32,6 +32,8 @@ class AssetHealthResponse(BaseModel):
     strain_microstrain: Optional[float] = None
     tilt_deg: Optional[float] = None
     anomaly_z_score: float = 0.0
+    available: bool = True
+    simulated_scenario: Optional[str] = None
     data_source: str = "simulated:data/sensors.csv"
     last_updated: str
     history: List[Dict[str, Any]] = Field(default_factory=list)

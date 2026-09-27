@@ -50,3 +50,25 @@ async def ingest_sensor_readings(
         asset_status=health_data["status"],
         data_source="simulated:data/sensors.csv",
     )
+
+
+@router.post("/sensors/simulate/{asset_id}")
+async def simulate_sensor_scenario(asset_id: str, scenario: str = "normal"):
+    """
+    Injects a SIMULATED reading (vibration spike, thermal overload, critical
+    strain) on top of the asset's simulated telemetry, so the UI can show how
+    the health score and risk score respond. "normal" clears it. In-memory only.
+    """
+    try:
+        key = SensorService.simulate_scenario(asset_id, scenario)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    health = SensorService.get_asset_health(asset_id, key)
+    return {
+        "simulated": True,
+        "scenario": scenario,
+        "asset_id": asset_id,
+        "project_id": key,
+        "health": AssetHealthResponse(**health),
+        "note": "Simulated scenario on simulated telemetry — no physical sensors are involved.",
+    }

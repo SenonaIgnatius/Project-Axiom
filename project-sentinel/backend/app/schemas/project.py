@@ -58,6 +58,16 @@ class ProjectBase(BaseModel):
     clusterLabel: Optional[str] = "Medium Risk"
     dataSource: str = "real:data/paimana/flash_report.pdf"
 
+    # Traceability back to the PAIMANA flash report
+    projectCode: Optional[str] = None
+    officialName: Optional[str] = None
+    agency: Optional[str] = None
+    reportState: Optional[str] = None
+    sourcePage: Optional[int] = None
+    alsoOnPages: Optional[List[int]] = None
+    reportNote: Optional[str] = None
+    verifiedBasis: str = "illustrative"
+
 class ProjectRecordResponse(ProjectBase):
     pass
 

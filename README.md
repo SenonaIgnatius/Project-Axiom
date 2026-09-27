@@ -4,7 +4,17 @@ Independent progress verification for public infrastructure projects.
 
 Government progress reports (MoSPI PAIMANA flash reports) are self-reported by implementing agencies. Sentinel checks them against evidence the agency doesn't control, which today means site photographs and satellite imagery. It combines the gap between reported and observed progress with budget, schedule, sensor and rainfall signals to produce an explainable 0–100 risk score for each project.
 
-This repository contains the FastAPI backend and ML pipeline.
+Built for Smart India Hackathon 2026, problem statement **SIH26103**.
+
+## Repository layout
+
+| Folder | What it is |
+|---|---|
+| `project-sentinel/backend/` | FastAPI backend, risk engine, ML pipeline, PAIMANA extraction |
+| `sentinel/` | Main web console (TanStack Start + React 19 + Tailwind v4) |
+| `project-sentinel/frontend/` | Earlier React/Vite dashboard, kept as a fallback |
+
+Every figure in the console is labelled by where it comes from: **real** (printed in the PAIMANA report or fetched from a public source), **derived** (computed from real figures), or **simulated / demonstration**. The console's *Provenance* page lists each module and its status.
 
 ## What's distinctive
 
@@ -26,16 +36,25 @@ This repository contains the FastAPI backend and ML pipeline.
 - **K-means risk clustering**
 - **Open-Meteo rainfall exposure**
 
+**Added for the SIH prototype:**
+- **Full PAIMANA extraction** (`scripts/extract_paimana_dataset.py`): all 1,392 ongoing projects from the Dec 2025 flash report, sectors taken from the report's own ministry headings, each row keeping the PDF page it came from.
+- **Source citation**: every monitored project links to its highlighted row in the real report page (`/api/projects/{id}/source-page`, `/api/paimana/page/{page}`).
+- **Report Audit** (`/api/data-quality`): six consistency checks run over every row of the report, flagging rows that contradict themselves.
+- **Peer benchmarking** (`/api/benchmark/{id}`), **edition history** (`/api/history/{id}`) and a **what-if simulator** (`/api/scenario`).
+- **Change box on satellite imagery** (`app/services/image_diff_service.py`): a block-wise pixel difference, restricted to the project's site area, marks where the before/after images changed most.
+- **Real rainfall** from the Open-Meteo archive (`scripts/fetch_rainfall.py`).
+- **Escalation draft** (`POST /api/projects/{id}/escalate`): drafts a notice to the implementing agency. Simulated; nothing is sent.
+
 ## Current status and known gaps
 
 Please read this before a demo:
 
 - **Model weights are not in git.** `data/models/` is gitignored. Copy `yolov8_construction_cls.pt` and `yolov8_construction_detect.pt` into `project-sentinel/backend/data/models/`. Without them the classifier falls back to the generic `yolov8n-cls.pt`, which does not produce meaningful completed/incomplete labels.
 - **The photo classifier training set is small.** It has 30 training and 10 validation images, trained for 5 epochs.
-- **Satellite imagery fetching is not wired into the app yet.** `fetch_before_after_images()` exists, but its caller (`scripts/refresh_satellite_cache.py`, the job behind `ENABLE_SATELLITE_SCHEDULER`) is not in this repo. With an empty cache the endpoint serves static fallback tiles.
+- **Satellite imagery is served from a committed cache.** `data/satellite_cache/` holds before/after images for the demo sites. `fetch_before_after_images()` exists, but no script in this repo calls it yet to refresh the cache from CDSE, and the capture source of the cached images is not yet confirmed (the API says so).
 - **The satellite *progress %* used in the risk score is simulated.** `app/services/satellite_service.py` produces a deterministic heuristic, not real NDBI change detection. It is labelled as simulated in API responses.
 - **The predictive risk model is trained on 600 synthetic samples** calibrated to plausible ranges, not on historical outcomes.
-- **Sensor telemetry is simulated.** `data/sensors.csv` is not included, so asset health returns a default healthy reading.
+- **Sensor telemetry is simulated.** No physical sensors exist. `scripts/generate_sensor_telemetry.py` writes `data/sensors.csv`, with stress levels derived from each project's real PAIMANA delay and budget figures. Assets with no telemetry are reported as unavailable.
 
 ## Running it
 
@@ -50,7 +69,17 @@ cp .env.example .env            # optional: add CDSE_CLIENT_ID / CDSE_CLIENT_SEC
 uvicorn app.main:app --reload --port 8000
 ```
 
-On first start the app creates `data/sentinel_v2.db` (SQLite) and seeds 10 monitored projects. Interactive API docs are at http://127.0.0.1:8000/docs.
+On first start the app creates `data/sentinel_v3.db` (SQLite) and seeds 10 monitored projects, all real rows from the PAIMANA report. Interactive API docs are at http://127.0.0.1:8000/docs.
+
+Then start the console in a second terminal:
+
+```bash
+cd sentinel
+npm install
+npm run dev                     # set VITE_API_URL if the backend isn't on http://localhost:8000/api
+```
+
+Optional data refresh: `python scripts/fetch_rainfall.py` (real rainfall) and `python scripts/generate_sensor_telemetry.py` (simulated telemetry).
 
 The app reads the CDSE credentials with `os.getenv`, so either export them in your shell or load `.env` with your process manager. Credentials are free from https://dataspace.copernicus.eu/.
 
@@ -59,7 +88,7 @@ The app reads the CDSE credentials with `os.getenv`, so either export them in yo
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/projects`, `/api/projects/{id}` | Project register |
-| GET | `/api/projects/{id}/risk-breakdown` | Weighted risk score, discrepancy details, XGBoost + SHAP |
+| GET | `/api/projects/{id}/risk`, `/api/projects/{id}/risk-breakdown` | Weighted risk score, discrepancy details, XGBoost + SHAP |
 | GET | `/api/model-validation` | Clustering / model validation summary |
 | POST | `/api/photos/classify` | YOLOv8 site-photo verification |
 | GET | `/api/photos/{project_id}` | Photo history for a project |
@@ -67,10 +96,16 @@ The app reads the CDSE credentials with `os.getenv`, so either export them in yo
 | GET | `/api/weather/{project_id}` | Rainfall exposure (Open-Meteo) |
 | GET | `/api/assets/{asset_id}/health`, POST `/api/sensors/ingest` | Asset telemetry |
 | POST | `/api/pipeline/ingest-paimana` | Parse a PAIMANA flash report PDF |
+| GET | `/api/projects/{id}/source-page`, `/api/paimana/page/{page}` | Highlighted source row from the report |
+| POST | `/api/projects/{id}/escalate` | Draft an escalation notice (simulated) |
+| GET | `/api/data-quality` | Report Audit over all 1,392 rows |
+| GET | `/api/benchmark/{id}`, `/api/history/{id}` | Peer benchmark, edition history |
+| GET/POST | `/api/scenario/{id}`, `/api/scenario` | What-if risk simulation |
+| POST | `/api/sensors/simulate/{asset_id}` | Inject a simulated sensor scenario |
 
 ## Data credits
 
 - MoSPI PAIMANA flash reports (Government of India)
 - Copernicus Sentinel-2 data, provided through the Copernicus Data Space Ecosystem
 - Roboflow Universe construction datasets (CC BY 4.0)
-- Open-Meteo weather API
+- Open-Meteo historical weather archive

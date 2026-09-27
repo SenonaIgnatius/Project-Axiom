@@ -16,3 +16,5 @@ class WeatherResponse(BaseModel):
     rainfall_7d_forecast_mm: float
     rainfall_risk_score: float = Field(..., ge=0.0, le=100.0)
     readings: List[WeatherPoint] = []
+    available: bool = True
+    data_source: str = "real:data/rainfall.csv"
