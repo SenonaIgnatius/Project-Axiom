@@ -97,6 +97,16 @@ export interface ChangeBox {
   method: string;
 }
 
+/** Measured: did the site area change more than the land around it? (never a % complete) */
+export interface SiteChange {
+  site_vs_surroundings_ratio: number;
+  site_changed_area_pct: number;
+  evidence_level: "strong" | "weak" | "none";
+  evidence_text: string;
+  method: string;
+  data_source: string;
+}
+
 export interface SatelliteAnalysis {
   project_id: string;
   project_name?: string;
@@ -108,12 +118,32 @@ export interface SatelliteAnalysis {
   cloud_cover_after?: number | null;
   copernicus_browser_url?: string;
   detected_change_box?: ChangeBox | null;
+  site_change?: SiteChange | null;
 }
 
 export interface BoundingBox {
   class_name: string;
   confidence: number;
   bbox: [number, number, number, number];
+}
+
+export interface IntegrityCheck {
+  key: "location" | "time" | "duplicate";
+  status: "pass" | "fail" | "unknown";
+  text: string;
+}
+
+/** Location / time / duplicate checks run on an uploaded photo before it may change a score. */
+export interface PhotoIntegrity {
+  verdict: "verified" | "unverifiable" | "flagged";
+  summary: string;
+  checks: IntegrityCheck[];
+  photo_lat: number | null;
+  photo_lng: number | null;
+  taken_at: string | null;
+  camera: string | null;
+  distance_km: number | null;
+  radius_km: number;
 }
 
 export interface PhotoClassification {
@@ -131,6 +161,8 @@ export interface PhotoClassification {
   heuristic_notes?: string;
   data_source?: string;
   timestamp: string;
+  integrity?: PhotoIntegrity | null;
+  project_updated?: boolean | null;
 }
 
 export interface AssetHealth {

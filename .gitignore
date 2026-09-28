@@ -13,3 +13,4 @@ dist-ssr/
 .wrangler/
 *.local
 *.log
+project-sentinel/backend/data/test_photos/

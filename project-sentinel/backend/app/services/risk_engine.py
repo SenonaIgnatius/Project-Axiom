@@ -13,7 +13,6 @@ from app.models.project import Project
 from app.models.risk import RiskAssessment
 from app.services.sensor_service import SensorService
 from app.services.weather_service import WeatherService
-from app.services.satellite_service import simulate_sentinel2_change_detection
 from app.ml.predictive_model import predictive_risk_model
 from app.schemas.risk import (
     RiskBreakdownResponse,
@@ -242,7 +241,7 @@ class RiskEngine:
         """
         Runs the full multi-tier assessment:
         1. Query project and engineering features.
-        2. Run Sentinel-2 satellite NDBI change detection.
+        2. Take the verified progress figure (illustrative or photo-based).
         3. Retrieve sensor health & weather exposure.
         4. Compute discrepancy signals.
         5. Run XGBoost predictive model and compute SHAP explanations.
@@ -253,18 +252,13 @@ class RiskEngine:
         if not project:
             raise ValueError(f"Project '{project_id}' not found.")
 
-        # 1. Satellite Change Detection
-        sat_result = simulate_sentinel2_change_detection(
-            project_id=project.id,
-            reported_progress=project.reported_progress
-        )
-        sat_estimate = sat_result["satellite_estimated_progress_pct"]
-        disc_sat = sat_result["discrepancy_satellite"]
-
-        # The NDBI result above is a labelled simulation on a random grid; it is kept for
-        # metadata only. Scoring uses the same verified figure shown to the user (an
-        # illustrative stand-in, or a real YOLOv8 estimate once a site photo is uploaded),
-        # so the risk factor and the claim-vs-evidence panel can never disagree.
+        # 1. Verified progress
+        # Satellite imagery is used as evidence of *whether* the site changed
+        # (see image_diff_service.measure_site_change), never as a % complete —
+        # a pixel diff can't measure that. Scoring uses the same verified figure
+        # shown to the user (an illustrative stand-in, or a real YOLOv8 estimate
+        # once a site photo is uploaded), so the risk factor and the
+        # claim-vs-evidence panel can never disagree.
         sat_estimate = project.verified_progress
         disc_sat = abs(project.reported_progress - sat_estimate)
 
@@ -365,7 +359,6 @@ class RiskEngine:
         project.xgboost_p_delay = pred_res["p_delay_over_6mo"]
         project.xgboost_p_cost_overrun = pred_res["p_cost_overrun_over_20pct"]
         project.shap_top_factors = pred_res["shap_explainability"][:3]
-        project.change_detected = sat_result["mean_ndbi_delta"]
         await db.commit()
 
         # Log snapshot

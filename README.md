@@ -41,6 +41,8 @@ Every figure in the console is labelled by where it comes from: **real** (printe
 - **Source citation**: every monitored project links to its highlighted row in the real report page (`/api/projects/{id}/source-page`, `/api/paimana/page/{page}`).
 - **Report Audit** (`/api/data-quality`): six consistency checks run over every row of the report, flagging rows that contradict themselves.
 - **Peer benchmarking** (`/api/benchmark/{id}`), **edition history** (`/api/history/{id}`) and a **what-if simulator** (`/api/scenario`).
+- **Photo integrity checks** (`app/services/photo_integrity_service.py`): before a site photo can change a score, its EXIF GPS is checked against the site (radius by sector), its capture time against the project start and the last 180 days, and its perceptual hash against earlier uploads. A flagged photo is still classified but can't move the verified figure. `scripts/make_test_photos.py` makes labelled test copies for demos.
+- **Site change vs surroundings** (`measure_site_change`): the after image is brightness-matched to the before image, then change inside the site area is compared with change in the surrounding frame and reported as strong / weak / no site-specific change.
 - **Change box on satellite imagery** (`app/services/image_diff_service.py`): a block-wise pixel difference, restricted to the project's site area, marks where the before/after images changed most.
 - **Real rainfall** from the Open-Meteo archive (`scripts/fetch_rainfall.py`).
 - **Escalation draft** (`POST /api/projects/{id}/escalate`): drafts a notice to the implementing agency. Simulated; nothing is sent.
@@ -52,7 +54,7 @@ Please read this before a demo:
 - **Model weights are not in git.** `data/models/` is gitignored. Copy `yolov8_construction_cls.pt` and `yolov8_construction_detect.pt` into `project-sentinel/backend/data/models/`. Without them the classifier falls back to the generic `yolov8n-cls.pt`, which does not produce meaningful completed/incomplete labels.
 - **The photo classifier training set is small.** It has 30 training and 10 validation images, trained for 5 epochs.
 - **Satellite imagery is served from a committed cache.** `data/satellite_cache/` holds before/after images for the demo sites. `fetch_before_after_images()` exists, but no script in this repo calls it yet to refresh the cache from CDSE, and the capture source of the cached images is not yet confirmed (the API says so).
-- **The satellite *progress %* used in the risk score is simulated.** `app/services/satellite_service.py` produces a deterministic heuristic, not real NDBI change detection. It is labelled as simulated in API responses.
+- **Satellite imagery is evidence of change, not a % complete.** A pixel comparison can't measure construction progress, so it isn't used as one. The *verified progress* figure is an illustrative stand-in (labelled so) until a site photo passes the integrity checks.
 - **The predictive risk model is trained on 600 synthetic samples** calibrated to plausible ranges, not on historical outcomes.
 - **Sensor telemetry is simulated.** No physical sensors exist. `scripts/generate_sensor_telemetry.py` writes `data/sensors.csv`, with stress levels derived from each project's real PAIMANA delay and budget figures. Assets with no telemetry are reported as unavailable.
 

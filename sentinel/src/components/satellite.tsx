@@ -16,6 +16,7 @@ export function SatFrame({
   label,
   date,
   changeBox,
+  siteSpecific = true,
   alt,
 }: {
   site: SiteImagery;
@@ -25,6 +26,8 @@ export function SatFrame({
   date?: string | undefined;
   /** Real pixel-difference result; drawn on the "after" frame only. */
   changeBox?: ChangeBox | null | undefined;
+  /** False when the site changed no more than its surroundings: the box is then drawn muted. */
+  siteSpecific?: boolean | undefined;
   alt: string;
 }) {
   // AOI from the backend is [x1, y1, x2, y2] in % of frame; some entries have an axis flipped.
@@ -68,7 +71,9 @@ export function SatFrame({
 
         {variant === "after" && changeBox && (
           <div
-            className="pointer-events-none absolute border-2 border-amber-400 bg-amber-400/10"
+            className={`pointer-events-none absolute border-2 ${
+              siteSpecific ? "border-amber-400 bg-amber-400/10" : "border-dashed border-amber-400/60"
+            }`}
             style={{
               left: `${changeBox.x_pct}%`,
               top: `${changeBox.y_pct}%`,
@@ -77,7 +82,7 @@ export function SatFrame({
             }}
           >
             <span className="absolute bottom-0 left-0 translate-y-full bg-amber-400 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest text-black">
-              Strongest change
+              {siteSpecific ? "Strongest change" : "Strongest change · not site-specific"}
             </span>
           </div>
         )}
@@ -92,7 +97,9 @@ export function SatFrame({
           {variant === "before"
             ? "Earlier image of the site area"
             : changeBox
-              ? "Amber box: strongest pixel change inside the site area"
+              ? siteSpecific
+                ? "Amber box: strongest pixel change inside the site area"
+                : "Dashed box: strongest change in the site area, but no more than the surroundings"
               : "Later image of the site area"}
         </span>
         <a href={copernicusUrl} target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline underline-offset-2">

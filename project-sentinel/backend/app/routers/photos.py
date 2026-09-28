@@ -13,6 +13,7 @@ from app.models.photo import PhotoVerification
 from app.models.project import Project
 from app.schemas.photo import PhotoClassifyResponse, BoundingBox
 from app.ml.photo_verifier import PhotoVerifier
+from app.services.photo_integrity_service import check_photo
 
 router = APIRouter(prefix="/photos", tags=["photos"])
 
@@ -36,11 +37,11 @@ async def classify_photo(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Empty filename provided")
 
-    # Get reported progress from project if not provided
+    proj = (await db.execute(select(Project).where(Project.id == project_id))).scalar_one_or_none()
+    if proj is None:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
     if reported_progress_pct is None:
-        stmt = select(Project).where(Project.id == project_id)
-        proj = (await db.execute(stmt)).scalar_one_or_none()
-        reported_progress_pct = proj.reported_progress if proj else 65.0
+        reported_progress_pct = proj.reported_progress
 
     timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     safe_filename = f"{project_id}_{timestamp_str}_{Path(file.filename).name}"
@@ -51,6 +52,17 @@ async def classify_photo(
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save upload: {e}")
+
+    # Integrity first: where and when was this photo taken, and is it a repeat?
+    earlier = [f for f in settings.UPLOADS_DIR.iterdir() if f.is_file() and f != save_path]
+    integrity = check_photo(
+        save_path,
+        site_lat=proj.latitude,
+        site_lng=proj.longitude,
+        sector=proj.sector,
+        start_date=proj.start_date,
+        earlier_uploads=earlier,
+    )
 
     try:
         result = PhotoVerifier.classify_image(
@@ -78,9 +90,9 @@ async def classify_photo(
     )
     db.add(photo_record)
 
-    if update_project:
-        stmt = select(Project).where(Project.id == project_id)
-        proj = (await db.execute(stmt)).scalar_one_or_none()
+    # A flagged photo is still classified and shown, but can't move the score.
+    project_updated = bool(update_project and integrity["verdict"] != "flagged")
+    if project_updated:
         if proj:
             proj.verified_progress = result["photo_verified_estimate"]
             proj.photo_estimated_progress = result["photo_verified_estimate"]
@@ -101,6 +113,8 @@ async def classify_photo(
         heuristic_notes=result["heuristic_notes"],
         data_source="real:data/photos/",
         timestamp=photo_record.created_at,
+        integrity=integrity,
+        project_updated=project_updated,
     )
 
 

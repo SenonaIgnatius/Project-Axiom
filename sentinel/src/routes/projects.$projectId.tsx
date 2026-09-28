@@ -13,6 +13,9 @@ import {
   getRiskBreakdown,
   getAssetHealth,
   classifySitePhoto,
+  type SiteChange,
+  type PhotoIntegrity,
+  type IntegrityCheck,
   simulateTelemetryScenario,
   getSatelliteChangeDetection,
   getPeerBenchmark,
@@ -419,7 +422,11 @@ function ProjectDetail() {
               {photoResult?.photo_verified_estimate != null ? `${photoResult.photo_verified_estimate.toFixed(1)}%` : "—"}
             </div>
             <div className="mt-1 font-mono text-[11px] text-muted-foreground">
-              {photoResult ? "From the photo verified in Layer 05" : "No photo verified yet · upload in Layer 05"}
+              {photoResult
+                ? photoResult.project_updated === false
+                  ? "Photo failed the integrity check · not used (Layer 05)"
+                  : "From the photo verified in Layer 05"
+                : "No photo verified yet · upload in Layer 05"}
             </div>
           </div>
 
@@ -638,12 +645,15 @@ function ProjectDetail() {
                 label="After"
                 date={satAnalysis?.after_date || site.afterDate}
                 changeBox={satAnalysis?.detected_change_box}
+                siteSpecific={satAnalysis?.site_change ? satAnalysis.site_change.evidence_level !== "none" : true}
                 alt={`Later image of the ${p.name} site area`}
               />
             </div>
+
+            {satAnalysis?.site_change && <SiteChangePanel sc={satAnalysis.site_change} />}
             <p className="mt-4 max-w-3xl font-mono text-[11px] leading-relaxed text-muted-foreground">
               {satAnalysis?.detected_change_box
-                ? "The amber box is computed from these two images — a grayscale pixel difference over a 24×24 grid, taking the largest connected cluster of change — searched only inside the site area, so a river or seasonal vegetation elsewhere in frame can't be mistaken for construction. "
+                ? "The box is computed from these two images — a grayscale pixel difference over a 24×24 grid, taking the largest connected cluster of change — searched only inside the site area, so a river elsewhere in frame can't be mistaken for construction. The evidence reading above says whether that change stands out from the surroundings at all. "
                 : "No localised change was detected inside the site area for this pair. "}
               Image capture source and dates are still being confirmed, so these are not labelled Sentinel-2; the
               Copernicus link opens the real Sentinel-2 archive for this location.
@@ -672,8 +682,10 @@ function ProjectDetail() {
         <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-12">
           <div className="md:col-span-5 space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Upload a site photograph. The backend runs the team's <strong>YOLOv8</strong> classifier on it; the
-              estimate replaces this project's illustrative verified figure and the risk score updates.
+              Upload a site photograph. The backend first checks <strong>where and when</strong> it was taken (GPS
+              and capture time in the file) and whether it's a repeat upload, then runs the team's{" "}
+              <strong>YOLOv8</strong> classifier. Only a photo that passes can replace the verified figure and move the
+              risk score.
             </p>
             <div className="border border-dashed border-border p-6 text-center hover:bg-surface/50 transition">
               {photoPreview && (
@@ -718,6 +730,9 @@ function ProjectDetail() {
           <div className="md:col-span-7">
             {photoResult ? (
               <div className="border border-border p-5 bg-surface/30 space-y-4">
+                {photoResult.integrity && (
+                  <IntegrityPanel integrity={photoResult.integrity} updated={!!photoResult.project_updated} />
+                )}
                 <div className="flex items-center justify-between">
                   <div className="label-xs">YOLOv8 Vision Inference Result</div>
                   <span className={`font-mono text-xs uppercase px-2 py-0.5 border ${
@@ -1608,6 +1623,90 @@ function ProjectDetail() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+const EVIDENCE_STYLE: Record<SiteChange["evidence_level"], string> = {
+  strong: "text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
+  weak: "text-amber-400 border-amber-500/40 bg-amber-500/10",
+  none: "text-muted-foreground border-border bg-surface",
+};
+
+/** Measured site-vs-surroundings change. Evidence that the site changed — never a % complete. */
+function SiteChangePanel({ sc }: { sc: SiteChange }) {
+  const label = { strong: "Site-specific change", weak: "Weak site-specific change", none: "No site-specific change" }[
+    sc.evidence_level
+  ];
+  return (
+    <div className="mt-5 grid grid-cols-1 gap-4 border border-border bg-surface/30 p-5 md:grid-cols-12">
+      <div className="md:col-span-5">
+        <div className="flex items-center gap-2">
+          <div className="label-xs">Satellite evidence</div>
+          <StatusPill status="derived">measured</StatusPill>
+        </div>
+        <span className={`mt-3 inline-block border px-2 py-1 font-mono text-xs font-bold uppercase tracking-wider ${EVIDENCE_STYLE[sc.evidence_level]}`}>
+          {label}
+        </span>
+        <p className="mt-3 text-sm leading-relaxed text-foreground/90">{sc.evidence_text}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-4 md:col-span-7">
+        <div>
+          <div className="label-xs">Site change ÷ surroundings</div>
+          <div className="mt-2 font-display text-2xl font-bold tabular-nums">{sc.site_vs_surroundings_ratio.toFixed(2)}×</div>
+          <div className="font-mono text-[10px] text-muted-foreground">1.00× = changed as much as the land around it</div>
+        </div>
+        <div>
+          <div className="label-xs">Site area changed</div>
+          <div className="mt-2 font-display text-2xl font-bold tabular-nums">{sc.site_changed_area_pct.toFixed(1)}%</div>
+          <div className="font-mono text-[10px] text-muted-foreground">above the surroundings' own noise level</div>
+        </div>
+        <p className="col-span-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+          Both images are brightness-matched first, so season and lighting that shift the whole frame cancel out.
+          This shows <em>whether</em> the site changed — a pixel difference can't measure % complete, so it isn't
+          used as one.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const CHECK_LABEL: Record<IntegrityCheck["key"], string> = { location: "Location", time: "Capture time", duplicate: "Duplicate" };
+const CHECK_STYLE: Record<IntegrityCheck["status"], string> = {
+  pass: "text-emerald-400",
+  fail: "text-red-400",
+  unknown: "text-amber-400",
+};
+const VERDICT_STYLE: Record<PhotoIntegrity["verdict"], string> = {
+  verified: "text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
+  unverifiable: "text-amber-400 border-amber-500/40 bg-amber-500/10",
+  flagged: "text-red-400 border-red-500/40 bg-red-500/10",
+};
+
+/** Where/when/duplicate checks on the uploaded photo, and whether it was allowed to change the score. */
+function IntegrityPanel({ integrity, updated }: { integrity: PhotoIntegrity; updated: boolean }) {
+  return (
+    <div className="border-b border-border pb-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="label-xs">Photo integrity check</div>
+        <span className={`border px-2 py-0.5 font-mono text-xs uppercase ${VERDICT_STYLE[integrity.verdict]}`}>
+          {integrity.verdict}
+        </span>
+      </div>
+      <ul className="mt-3 space-y-1.5">
+        {integrity.checks.map((c) => (
+          <li key={c.key} className="grid grid-cols-[110px_60px_1fr] gap-2 font-mono text-[11px]">
+            <span className="text-muted-foreground">{CHECK_LABEL[c.key]}</span>
+            <span className={`uppercase ${CHECK_STYLE[c.status]}`}>{c.status === "unknown" ? "n/a" : c.status}</span>
+            <span className="text-foreground/90">{c.text}</span>
+          </li>
+        ))}
+      </ul>
+      <p className={`mt-3 text-xs leading-relaxed ${integrity.verdict === "flagged" ? "text-red-400" : "text-muted-foreground"}`}>
+        {integrity.summary}{" "}
+        {updated ? "The verified figure and risk score were updated." : "The verified figure and risk score were not changed."}
+        {integrity.camera?.startsWith("TEST") && " (Test file: its location and time were written by make_test_photos.py.)"}
+      </p>
     </div>
   );
 }

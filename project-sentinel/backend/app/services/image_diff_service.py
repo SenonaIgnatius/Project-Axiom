@@ -69,6 +69,95 @@ def _largest_cluster(mask: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
     return min(rs), min(cs), max(rs), max(cs)
 
 
+# Thresholds for calling change "site-specific" (tuned on the 10 demo pairs;
+# see measure_site_change). A site only counts as showing construction-like
+# change when it changed clearly MORE than the land around it.
+STRONG_RATIO, STRONG_AREA = 1.3, 15.0
+WEAK_RATIO = 1.1
+
+
+def _aoi_mask(aoi_pct: Optional[List[float]], grid: int) -> Optional[np.ndarray]:
+    if not aoi_pct or len(aoi_pct) != 4:
+        return None
+    x1, y1, x2, y2 = aoi_pct
+    x1, x2 = min(x1, x2), max(x1, x2)
+    y1, y2 = min(y1, y2), max(y1, y2)
+    m = np.zeros((grid, grid), dtype=bool)
+    m[max(0, int(y1 / 100 * grid)):min(grid, int(np.ceil(y2 / 100 * grid))),
+      max(0, int(x1 / 100 * grid)):min(grid, int(np.ceil(x2 / 100 * grid)))] = True
+    return m if m.any() and not m.all() else None
+
+
+def measure_site_change(
+    before_path: Path,
+    after_path: Path,
+    aoi_pct: Optional[List[float]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Real, measured signal: did the site area change more than its surroundings?
+
+    Pixel change alone can't tell construction from season, lighting or haze —
+    those change the whole frame. So the after image is first brightness-matched
+    to the before image, and the site's change is compared with the change in
+    the land around it:
+
+      ratio        = mean block difference inside the site / outside it
+      changed_area = % of site blocks above the surroundings' own noise level
+                     (median + 2·std of the outside blocks)
+
+    This is evidence of *whether* the site changed, not a % complete: a pixel
+    diff cannot measure construction progress, and the result is never
+    presented as one.
+    """
+    try:
+        b_img = Image.open(before_path)
+        a_img = Image.open(after_path)
+        if a_img.size != b_img.size:
+            a_img = a_img.resize(b_img.size)
+        b = np.asarray(b_img.convert("L"), dtype=np.float32)
+        a = np.asarray(a_img.convert("L"), dtype=np.float32)
+    except Exception as e:
+        logger.warning(f"Could not read imagery for site-change measure: {e}")
+        return None
+
+    grid = BLOCK_GRID
+    mask = _aoi_mask(aoi_pct, grid)
+    if mask is None:
+        return None
+
+    # Brightness/contrast match: removes frame-wide illumination/season shifts.
+    a = (a - a.mean()) / (a.std() or 1.0) * b.std() + b.mean()
+    d = np.abs(a - b)
+    h, w = d.shape
+    bh, bw = h // grid, w // grid
+    if bh == 0 or bw == 0:
+        return None
+    scores = d[: bh * grid, : bw * grid].reshape(grid, bh, grid, bw).mean(axis=(1, 3))
+
+    inside, outside = scores[mask], scores[~mask]
+    ratio = float(inside.mean() / (outside.mean() or 1e-6))
+    noise = float(np.median(outside) + 2 * outside.std())
+    changed_area = float((inside > noise).mean() * 100.0)
+
+    if ratio >= STRONG_RATIO and changed_area >= STRONG_AREA:
+        level, text = "strong", "The site area changed clearly more than the land around it."
+    elif ratio >= WEAK_RATIO:
+        level, text = "weak", "The site area changed somewhat more than the land around it."
+    else:
+        level, text = "none", ("The site area changed no more than the land around it, so the change "
+                               "can't be told apart from season, lighting or haze.")
+
+    return {
+        "site_vs_surroundings_ratio": round(ratio, 2),
+        "site_changed_area_pct": round(changed_area, 1),
+        "evidence_level": level,
+        "evidence_text": text,
+        "method": ("brightness-matched grayscale block diff (24x24); site-area change compared "
+                   "with change in the surrounding frame"),
+        "data_source": "derived:pixel_comparison_of_cached_images",
+    }
+
+
 def detect_change_region(
     before_path: Path,
     after_path: Path,
@@ -152,6 +241,11 @@ def detect_change_region(
     c0 = max(0, c0 - 0)
     r1 = min(grid - 1, r1 + 1)
     c1 = min(grid - 1, c1 + 1)
+    # Keep the padded box inside the site area it was searched in.
+    rows_in = np.where(eligible.any(axis=1))[0]
+    cols_in = np.where(eligible.any(axis=0))[0]
+    r0, r1 = max(r0, int(rows_in.min())), min(r1, int(rows_in.max()))
+    c0, c1 = max(c0, int(cols_in.min())), min(c1, int(cols_in.max()))
 
     x_pct = (c0 / grid) * 100.0
     y_pct = (r0 / grid) * 100.0

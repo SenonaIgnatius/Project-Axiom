@@ -19,3 +19,5 @@ class PhotoClassifyResponse(BaseModel):
     heuristic_notes: Optional[str] = None
     data_source: str = "real:data/photos/"
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    integrity: Optional[Dict[str, Any]] = Field(None, description="Location / time / duplicate checks on the photo")
+    project_updated: Optional[bool] = Field(None, description="Whether this photo changed the project's verified progress")

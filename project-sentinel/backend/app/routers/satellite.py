@@ -7,8 +7,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.project import Project
 from app.models.satellite_image_cache import SatelliteImageCache
-from app.services.satellite_service import simulate_sentinel2_change_detection
-from app.services.image_diff_service import detect_change_region
+from app.services.image_diff_service import detect_change_region, measure_site_change
 from app.config import settings
 
 logger = logging.getLogger("sentinel-satellite-router")
@@ -29,25 +28,22 @@ async def get_satellite_change_detection(
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
-    result = simulate_sentinel2_change_detection(
-        project_id=project.id,
-        reported_progress=project.reported_progress
-    )
+    # No simulated figures here: everything below is either read from the
+    # cache/DB or measured from the two cached images.
+    result: dict = {"project_id": project.id}
+    placeholder_cloud_cover = None
 
     lat = project.latitude or 22.91431
     lng = project.longitude or 88.19824
     zoom = project.zoom or 14
     copernicus_url = f"https://browser.dataspace.copernicus.eu/?zoom={zoom}&lat={lat:.5f}&lng={lng:.5f}&themeId=DEFAULT-THEME&visualizationUrl=U2FsdGVkX1%2F%2BgCguT%2BwC0%2BAwoBQEh4RnBYm7i1wvnDNkW1gKnnAO4s%2F05Jmu9q5GKxksbcUXg%2FKMfpfL%2B3eUiFUORL0nTVkyb%2F9Hn330hURQvJLMXhDkx5LgUG1rK3%2Ft&datasetId=S2_L2A_CDAS&demSource3D=%22MAPZEN%22&cloudCoverage=30&dateMode=SINGLE"
 
-    # Separate sources: preserve existing heuristic NDBI disclosure
-    change_detection_source = result.get("methodology") or "Heuristic simulation calibrated per-project for demo purposes (not live change detection)"
+    change_detection_source = "Measured: pixel comparison of the cached before/after images (not a % complete)"
 
     # Query local database cache (zero network calls)
     cache_stmt = select(SatelliteImageCache).where(SatelliteImageCache.project_id == project_id)
     cache_row = (await db.execute(cache_stmt)).scalar_one_or_none()
 
-    placeholder_cloud_cover = float(result.pop("cloud_cover_pct", 2.1) or 2.1)
-    result.pop("data_source", None)
 
     is_project_specific_pair = False
 
@@ -70,7 +66,7 @@ async def get_satellite_change_detection(
         after_date = project.after_date or "2026-08-12"
         cloud_cover_before = None
         cloud_cover_after = None
-        cloud_cover_pct = placeholder_cloud_cover  # Never null, equals 2.1
+        cloud_cover_pct = None  # unknown for uncached imagery — never invented
         fetch_status = "uncached_fallback"
         fetched_at = None
 
@@ -111,7 +107,14 @@ async def get_satellite_change_detection(
                 after_image_path = str(public_sat_dir / "roads_after.jpg")
 
     detected_change_box = None
+    site_change = None
     if is_project_specific_pair:
+        try:
+            site_change = measure_site_change(
+                Path(before_image_path), Path(after_image_path), aoi_pct=project.aoi_json
+            )
+        except Exception as e:
+            logger.warning(f"Site-change measure failed for {project_id}: {e}")
         try:
             detected_change_box = detect_change_region(
                 Path(before_image_path),
@@ -123,6 +126,7 @@ async def get_satellite_change_detection(
 
     result.update({
         "detected_change_box": detected_change_box,
+        "site_change": site_change,
         "project_name": project.name,
         "latitude": lat,
         "longitude": lng,
@@ -137,7 +141,6 @@ async def get_satellite_change_detection(
         "cloud_cover_before": cloud_cover_before,
         "cloud_cover_after": cloud_cover_after,
         "cloud_cover_pct": cloud_cover_pct,
-        "placeholder_cloud_cover_pct": placeholder_cloud_cover,
         # Imagery cache metadata
         "before_image_path": before_image_path,
         "after_image_path": after_image_path,
