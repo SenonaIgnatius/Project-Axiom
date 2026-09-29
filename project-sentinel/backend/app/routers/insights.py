@@ -422,3 +422,105 @@ async def report_page(page_no: int, code: str, full: bool = False):
     if not path:
         raise HTTPException(status_code=404, detail="Could not render that page")
     return FileResponse(path, media_type="image/png")
+
+
+# ── the whole report, browsable ─────────────────────────────────────────────
+
+_SORTS = {
+    "cost": lambda r: -(r.get("revised_cost_cr") or r.get("original_cost_cr") or 0.0),
+    "escalation": lambda r: -_escalation(r),
+    "progress": lambda r: (r.get("physical_progress_pct") is None, r.get("physical_progress_pct") or 0.0),
+    "name": lambda r: (r.get("name") or "").lower(),
+}
+
+
+@router.get("/paimana/projects")
+async def report_projects(
+    q: str = "",
+    sector: str = "",
+    ministry: str = "",
+    flag: str = "",
+    case_studies: bool = False,
+    sort: str = "cost",
+    page: int = 1,
+    page_size: int = 50,
+):
+    """
+    Every project row in the PAIMANA flash report, with its audit flags and
+    source page. Read-only: report figures only, no verification. The 10
+    projects with full evidence layers are marked as case studies.
+    """
+    from app.services.demo_registry import DEMO_SITES
+
+    data = dataset()
+    ref = REPORT_REF_DATE
+    case = {s["code"]: s["id"] for s in DEMO_SITES}
+    needle = q.strip().lower()
+    page_size = max(10, min(page_size, 200))
+
+    rows = []
+    for r in data["projects"]:
+        flags = _dq_flags(r, ref)
+        if sector and r.get("sector") != sector:
+            continue
+        if ministry and r.get("ministry") != ministry:
+            continue
+        if flag and flag not in flags:
+            continue
+        if case_studies and r["project_code"] not in case:
+            continue
+        if needle and not any(
+            needle in (r.get(k) or "").lower() for k in ("name", "agency", "state", "project_code", "ministry")
+        ):
+            continue
+        rows.append((r, flags))
+
+    rows.sort(key=lambda rf: _SORTS.get(sort, _SORTS["cost"])(rf[0]))
+    total = len(rows)
+    start = (max(page, 1) - 1) * page_size
+
+    def out(r, flags):
+        return {
+            "project_code": r["project_code"],
+            "name": r.get("name"),
+            "agency": r.get("agency"),
+            "ministry": r.get("ministry"),
+            "sector": r.get("sector"),
+            "state": r.get("state"),
+            "start_date": r.get("start_date"),
+            "original_completion": r.get("original_completion"),
+            "revised_completion": r.get("revised_completion"),
+            "original_cost_cr": r.get("original_cost_cr"),
+            "revised_cost_cr": r.get("revised_cost_cr"),
+            "expenditure_cr": r.get("expenditure_cr"),
+            "physical_progress_pct": r.get("physical_progress_pct"),
+            "cost_escalation_pct": round(_escalation(r), 1),
+            "source_page": r.get("source_page"),
+            "flags": flags,
+            "case_study_id": case.get(r["project_code"]),
+        }
+
+    all_rows = data["projects"]
+    sectors: Dict[str, int] = {}
+    ministries: Dict[str, int] = {}
+    for r in all_rows:
+        sectors[r.get("sector") or "Other"] = sectors.get(r.get("sector") or "Other", 0) + 1
+        if r.get("ministry"):
+            ministries[r["ministry"]] = ministries.get(r["ministry"], 0) + 1
+
+    return {
+        "edition": data.get("edition"),
+        "total_in_report": len(all_rows),
+        "matched": total,
+        "page": max(page, 1),
+        "page_size": page_size,
+        "pages": max(1, math.ceil(total / page_size)),
+        "projects": [out(r, f) for r, f in rows[start:start + page_size]],
+        "facets": {
+            "sectors": sorted(sectors.items(), key=lambda kv: -kv[1]),
+            "ministries": sorted(ministries.items(), key=lambda kv: -kv[1]),
+            "flags": [{"key": k, "label": lab, "severity": sev} for k, sev, lab, _ in DQ_RULES],
+        },
+        "case_study_count": len(case),
+        "source": data.get("source"),
+    }

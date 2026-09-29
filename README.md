@@ -103,6 +103,7 @@ The app reads the CDSE credentials with `os.getenv`, so either export them in yo
 | GET | `/api/data-quality` | Report Audit over all 1,392 rows |
 | GET | `/api/benchmark/{id}`, `/api/history/{id}` | Peer benchmark, edition history |
 | GET/POST | `/api/scenario/{id}`, `/api/scenario` | What-if risk simulation |
+| GET | `/api/paimana/projects` | All 1,392 report projects: search, filters, audit flags, source pages |
 | POST | `/api/sensors/simulate/{asset_id}` | Inject a simulated sensor scenario |
 
 ## Data credits

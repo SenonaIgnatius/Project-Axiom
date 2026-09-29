@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as DataQualityRouteImport } from './routes/data-quality'
 import { Route as ProvenanceRouteImport } from './routes/provenance'
+import { Route as ReportRouteImport } from './routes/report'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 
@@ -36,6 +37,11 @@ const ProvenanceRoute = ProvenanceRouteImport.update({
   path: '/provenance',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReportRoute = ReportRouteImport.update({
+  id: '/report',
+  path: '/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
   id: '/projects/',
   path: '/projects/',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AnalyticsRoute
   '/data-quality': typeof DataQualityRoute
   '/provenance': typeof ProvenanceRoute
+  '/report': typeof ReportRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/': typeof ProjectsIndexRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AnalyticsRoute
   '/data-quality': typeof DataQualityRoute
   '/provenance': typeof ProvenanceRoute
+  '/report': typeof ReportRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects': typeof ProjectsIndexRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/analytics': typeof AnalyticsRoute
   '/data-quality': typeof DataQualityRoute
   '/provenance': typeof ProvenanceRoute
+  '/report': typeof ReportRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/': typeof ProjectsIndexRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/data-quality'
     | '/provenance'
+    | '/report'
     | '/projects/$projectId'
     | '/projects/'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/data-quality'
     | '/provenance'
+    | '/report'
     | '/projects/$projectId'
     | '/projects'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/data-quality'
     | '/provenance'
+    | '/report'
     | '/projects/$projectId'
     | '/projects/'
   fileRoutesById: FileRoutesById
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   AnalyticsRoute: typeof AnalyticsRoute
   DataQualityRoute: typeof DataQualityRoute
   ProvenanceRoute: typeof ProvenanceRoute
+  ReportRoute: typeof ReportRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
@@ -138,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProvenanceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/report': {
+      id: '/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof ReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/': {
       id: '/projects/'
       path: '/projects'
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   AnalyticsRoute: AnalyticsRoute,
   DataQualityRoute: DataQualityRoute,
   ProvenanceRoute: ProvenanceRoute,
+  ReportRoute: ReportRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
 }

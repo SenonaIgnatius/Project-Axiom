@@ -442,3 +442,61 @@ export const runScenarioSimulation = (payload: {
 
 export const getScenarioBaseline = (projectId: string) =>
   request<ScenarioResponse>(`/scenario/${projectId}`);
+
+// ── The whole report, browsable ─────────────────────────────────────────────
+
+export interface ReportProject {
+  project_code: string;
+  name: string | null;
+  agency: string | null;
+  ministry: string | null;
+  sector: string | null;
+  state: string | null;
+  start_date: string | null;
+  original_completion: string | null;
+  revised_completion: string | null;
+  original_cost_cr: number | null;
+  revised_cost_cr: number | null;
+  expenditure_cr: number | null;
+  physical_progress_pct: number | null;
+  cost_escalation_pct: number;
+  source_page: number | null;
+  flags: string[];
+  /** Set for the projects with full evidence layers. */
+  case_study_id: string | null;
+}
+
+export interface ReportProjectsResponse {
+  edition: string;
+  total_in_report: number;
+  matched: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  projects: ReportProject[];
+  facets: {
+    sectors: [string, number][];
+    ministries: [string, number][];
+    flags: { key: string; label: string; severity: "critical" | "medium" | "low" }[];
+  };
+  case_study_count: number;
+  source: string;
+}
+
+export interface ReportQuery {
+  q?: string;
+  sector?: string;
+  ministry?: string;
+  flag?: string;
+  case_studies?: boolean;
+  sort?: "cost" | "escalation" | "progress" | "name";
+  page?: number;
+}
+
+export function getReportProjects(query: ReportQuery = {}) {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== "" && v !== false) params.set(k, String(v));
+  }
+  return request<ReportProjectsResponse>(`/paimana/projects?${params.toString()}`);
+}
