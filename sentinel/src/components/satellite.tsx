@@ -31,8 +31,12 @@ export function SatFrame({
   alt: string;
 }) {
   // AOI from the backend is [x1, y1, x2, y2] in % of frame; some entries have an axis flipped.
-  const [a, b, c, d] = site.aoi;
-  const x1 = Math.min(a, c), x2 = Math.max(a, c), y1 = Math.min(b, d), y2 = Math.max(b, d);
+  const box = site.aoi
+    ? (() => {
+        const [a, b, c, d] = site.aoi;
+        return { x1: Math.min(a, c), x2: Math.max(a, c), y1: Math.min(b, d), y2: Math.max(b, d) };
+      })()
+    : null;
   const copernicusUrl = getCopernicusBrowserUrl(site.lat, site.lng, site.zoom);
 
   return (
@@ -59,15 +63,21 @@ export function SatFrame({
           </div>
         )}
 
-        {/* Site area of interest, set by the team (PAIMANA publishes no coordinates) */}
-        <div
-          className="pointer-events-none absolute border border-dashed border-foreground/80"
-          style={{ left: `${x1}%`, top: `${y1}%`, width: `${x2 - x1}%`, height: `${y2 - y1}%` }}
-        >
-          <span className="absolute -top-[1px] left-0 -translate-y-full bg-background px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest border border-border text-foreground">
-            Site area
-          </span>
-        </div>
+        {/* Site area, located in the image by the team (PAIMANA publishes no coordinates) */}
+        {box ? (
+          <div
+            className="pointer-events-none absolute border border-dashed border-foreground/80"
+            style={{ left: `${box.x1}%`, top: `${box.y1}%`, width: `${box.x2 - box.x1}%`, height: `${box.y2 - box.y1}%` }}
+          >
+            <span className="absolute -top-[1px] left-0 -translate-y-full whitespace-nowrap bg-background px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest border border-border text-foreground">
+              Site area
+            </span>
+          </div>
+        ) : (
+          <div className="pointer-events-none absolute left-2 top-2 bg-background/85 border border-border px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
+            Structure not identifiable in this image
+          </div>
+        )}
 
         {variant === "after" && changeBox && (
           <div
@@ -94,7 +104,9 @@ export function SatFrame({
 
       <figcaption className="border-t border-border px-3.5 py-2 font-mono text-[10px] text-muted-foreground flex flex-wrap items-center justify-between gap-2 bg-surface/30">
         <span>
-          {variant === "before"
+          {!box
+            ? "Location context only — no change measured"
+            : variant === "before"
             ? "Earlier image of the site area"
             : changeBox
               ? siteSpecific

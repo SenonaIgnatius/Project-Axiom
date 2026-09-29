@@ -68,7 +68,9 @@ export const Route = createFileRoute("/projects/$projectId")({
       }
       return <RecordNotFound />;
     }
-    return <ProjectDetail />;
+    // key: navigating project → project reuses this route, so without a key the
+    // page kept the first project's state (and images) for every later one.
+    return <ProjectDetail key={data.project.id} />;
   },
 });
 
@@ -652,7 +654,9 @@ function ProjectDetail() {
 
             {satAnalysis?.site_change && <SiteChangePanel sc={satAnalysis.site_change} />}
             <p className="mt-4 max-w-3xl font-mono text-[11px] leading-relaxed text-muted-foreground">
-              {satAnalysis?.detected_change_box
+              {site.aoi === null
+                ? "The project's structure can't be identified in these images (e.g. work in tunnels, or not yet visible at this resolution), so no site area is drawn and no change is measured — the images are shown for location context only. "
+                : satAnalysis?.detected_change_box
                 ? "The box is computed from these two images — a grayscale pixel difference over a 24×24 grid, taking the largest connected cluster of change — searched only inside the site area, so a river elsewhere in frame can't be mistaken for construction. The evidence reading above says whether that change stands out from the surroundings at all. "
                 : "No localised change was detected inside the site area for this pair. "}
               Image capture source and dates are still being confirmed, so these are not labelled Sentinel-2; the

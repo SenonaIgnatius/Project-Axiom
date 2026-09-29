@@ -23,7 +23,8 @@ export interface SiteImagery {
   changeDetected: number;
   ndbiDelta?: number;
   /** Site area of interest, set by the team: [x1, y1, x2, y2] as % of the frame */
-  aoi: [number, number, number, number];
+  /** Project's structure in the image, % of frame; null = not identifiable in this image. */
+  aoi: [number, number, number, number] | null;
 }
 
 export interface ProjectRecord {

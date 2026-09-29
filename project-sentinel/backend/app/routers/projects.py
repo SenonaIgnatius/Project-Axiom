@@ -14,7 +14,7 @@ from app.schemas.project import (
     SiteImagerySchema,
 )
 from app.services.risk_engine import RiskEngine
-from app.services.demo_registry import build_demo_seed
+from app.services.demo_registry import build_demo_seed, site_aoi
 from app.services.source_page_service import render_source_page
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -126,7 +126,7 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
             afterDate=project.after_date or "2026-08-12",
             changeDetected=project.change_detected or project.verified_progress,
             ndbiDelta=round(project.ndbi_diff or 0.22, 3),
-            aoi=project.aoi_json or [12.0, 22.0, 62.0, 46.0],
+            aoi=site_aoi(project.id),  # None = project not identifiable in the image
         )
 
     sat_est = project.satellite_estimated_progress or project.verified_progress or max(0.0, project.reported_progress - 6.0)

@@ -9,6 +9,7 @@ from app.models.project import Project
 from app.models.satellite_image_cache import SatelliteImageCache
 from app.services.image_diff_service import detect_change_region, measure_site_change
 from app.config import settings
+from app.services.demo_registry import site_aoi
 
 logger = logging.getLogger("sentinel-satellite-router")
 router = APIRouter(prefix="/satellite", tags=["satellite"])
@@ -108,10 +109,13 @@ async def get_satellite_change_detection(
 
     detected_change_box = None
     site_change = None
-    if is_project_specific_pair:
+    aoi = site_aoi(project.id)
+    # Without a located site area there is nothing honest to measure: a
+    # whole-frame diff mostly finds rivers, towns and seasons.
+    if is_project_specific_pair and aoi:
         try:
             site_change = measure_site_change(
-                Path(before_image_path), Path(after_image_path), aoi_pct=project.aoi_json
+                Path(before_image_path), Path(after_image_path), aoi_pct=aoi
             )
         except Exception as e:
             logger.warning(f"Site-change measure failed for {project_id}: {e}")
@@ -119,7 +123,7 @@ async def get_satellite_change_detection(
             detected_change_box = detect_change_region(
                 Path(before_image_path),
                 Path(after_image_path),
-                aoi_pct=project.aoi_json,
+                aoi_pct=aoi,
             )
         except Exception as e:
             logger.warning(f"Change-region diff failed for {project_id}: {e}")
@@ -127,6 +131,7 @@ async def get_satellite_change_detection(
     result.update({
         "detected_change_box": detected_change_box,
         "site_change": site_change,
+        "site_located": bool(aoi),
         "project_name": project.name,
         "latitude": lat,
         "longitude": lng,

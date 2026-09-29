@@ -28,22 +28,27 @@ REPORT_MONTH = "2025-12"
 REPORT_REF_DATE = date(2025, 12, 31)  # figures in the report are "as of" this month
 DATASET_PATH = settings.DATA_DIR / "paimana" / "paimana_projects.json"
 
+# aoi = the project's structure in the cached image, as [x1, y1, x2, y2] % of
+# the frame, drawn by the team by locating the structure visually (dam, road,
+# rail corridor). None = the project can't be identified in this image
+# (e.g. a rail line that runs in tunnels, a highway not yet visible), so no
+# site area, change box or change reading is shown for it.
 DEMO_SITES: List[Dict[str, Any]] = [
     dict(id="PS-PW-3308", code="602961", sector="Power", display_state="Odisha",
          display_name="Talcher Thermal Power Station Stage III (2×660 MW)",
-         lat=20.9497, lng=85.2337, zoom=15, aoi=[22, 18, 52, 54],
+         lat=20.9497, lng=85.2337, zoom=15, aoi=None,
          before_date="2026-02-12", after_date="2026-08-09", illustrative_gap=23.0),
     dict(id="PS-RL-2340", code="705429", sector="Railways", display_state="Uttarakhand",
          display_name="Rishikesh–Karnaprayag New Rail Line (125 km)",
-         lat=30.2043, lng=78.8081, zoom=15, aoi=[26, 24, 46, 48],
+         lat=30.2043, lng=78.8081, zoom=15, aoi=None,
          before_date="2026-02-09", after_date="2026-08-08", illustrative_gap=16.9),
     dict(id="PS-WT-4471", code="701415", sector="Water", display_state="Andhra Pradesh",
          display_name="Polavaram Irrigation Project",
-         lat=17.2473, lng=81.6483, zoom=14, aoi=[6, 22, 84, 40],
+         lat=17.2473, lng=81.6483, zoom=14, aoi=[76, 20, 90, 92],
          before_date="2026-02-15", after_date="2026-08-12", illustrative_gap=12.6),
     dict(id="PS-RD-1120", code="618412", sector="Roads", display_state="Jammu & Kashmir / Ladakh",
          display_name="Zojila Tunnel & Z-Morh Connecting Road (NH-1)",
-         lat=34.2769, lng=75.4726, zoom=14, aoi=[8, 30, 76, 34],
+         lat=34.2769, lng=75.4726, zoom=14, aoi=[36, 40, 62, 70],
          before_date="2026-02-06", after_date="2026-08-06", illustrative_gap=20.1,
          report_note=("The report files this project under Andhra Pradesh and lists ₹0 expenditure "
                       "and 0% physical progress for a tunnel under construction since 2020 — an "
@@ -51,27 +56,27 @@ DEMO_SITES: List[Dict[str, Any]] = [
                       "report's figures as published, so treat it with caution.")),
     dict(id="PS-RL-2217", code="705598", sector="Railways", display_state="Madhya Pradesh, Uttar Pradesh",
          display_name="Jhansi–Bina Third Railway Line (153 km)",
-         lat=25.4484, lng=78.5685, zoom=14, aoi=[8, 30, 78, 34],
+         lat=25.4484, lng=78.5685, zoom=14, aoi=[0, 0, 9, 98],
          before_date="2026-02-20", after_date="2026-08-14", illustrative_gap=2.8),
     dict(id="PS-RD-1088", code="618618", sector="Roads", display_state="Punjab",
          display_name="Amritsar–Bathinda Greenfield Highway, Pkg-3 (NH-754A)",
-         lat=30.5476, lng=74.9455, zoom=14, aoi=[10, 28, 70, 40],
+         lat=30.5476, lng=74.9455, zoom=14, aoi=None,
          before_date="2026-02-19", after_date="2026-08-13", illustrative_gap=4.2),
     dict(id="PS-PW-3355", code="612134", sector="Power", display_state="Rajasthan",
          display_name="Rajasthan REZ Ph-IV Transmission, Bikaner Complex (Part A)",
-         lat=27.9333, lng=74.1667, zoom=14, aoi=[14, 20, 64, 52],
+         lat=27.9333, lng=74.1667, zoom=14, aoi=None,
          before_date="2026-02-21", after_date="2026-08-15", illustrative_gap=1.7),
     dict(id="PS-RL-2502", code="702628", sector="Railways", display_state="Uttar Pradesh",
          display_name="Kanpur Metro Rail Project",
-         lat=26.4499, lng=80.3319, zoom=15, aoi=[18, 26, 58, 44],
+         lat=26.4499, lng=80.3319, zoom=15, aoi=None,
          before_date="2026-02-17", after_date="2026-08-14", illustrative_gap=2.4),
     dict(id="PS-RL-2401", code="705237", sector="Railways", display_state="GJ, HR, MH, RJ, UP",
          display_name="Western Dedicated Freight Corridor (Dadri terminal)",
-         lat=28.5522, lng=77.5525, zoom=15, aoi=[20, 22, 56, 50],
+         lat=28.5522, lng=77.5525, zoom=15, aoi=[62, 5, 92, 75],
          before_date="2026-02-22", after_date="2026-08-15", illustrative_gap=1.3),
     dict(id="PS-PW-3390", code="602096", sector="Power", display_state="Arunachal Pradesh, Assam",
          display_name="Subansiri Lower Hydroelectric Project (2000 MW)",
-         lat=27.5522, lng=94.2481, zoom=15, aoi=[24, 20, 50, 52],
+         lat=27.5522, lng=94.2481, zoom=15, aoi=[76, 48, 99, 92],
          before_date="2026-02-10", after_date="2026-08-10", illustrative_gap=16.5),
 ]
 
@@ -206,3 +211,11 @@ def build_demo_seed() -> List[Dict[str, Any]]:
             "aoi_json": site["aoi"],
         })
     return seed
+
+
+def site_aoi(project_id: str) -> Optional[List[float]]:
+    """Current site area from the registry (so a corrected AOI applies without re-seeding the DB)."""
+    for site in DEMO_SITES:
+        if site["id"] == project_id:
+            return site["aoi"]
+    return None
