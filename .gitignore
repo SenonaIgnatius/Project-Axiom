@@ -1,7 +1,3 @@
-﻿project-sentinel/backend/data/*.zip
-project-sentinel/backend/data/roboflow_construction_site/
-project-sentinel/backend/data/models/
-
 # Node / frontend build output
 node_modules/
 dist/
@@ -13,4 +9,3 @@ dist-ssr/
 .wrangler/
 *.local
 *.log
-project-sentinel/backend/data/test_photos/

@@ -1,0 +1,23 @@
+# Environment variables & secrets
+.env
+*.env
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local databases & virtual environments
+.venv/
+venv/
+*.db
+
+# Generated data & binary caches
+# (data/satellite_cache/ IS committed: it holds the demo site images)
+data/photos/
+data/uploads/
+data/test_photos/
+data/*.zip
+data/roboflow_construction_site/
+data/models/

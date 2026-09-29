@@ -1,18 +1,17 @@
-# Project Sentinel (AXIOM)
+# Axiom
 
 Independent progress verification for public infrastructure projects.
 
-Government progress reports (MoSPI PAIMANA flash reports) are self-reported by implementing agencies. Sentinel checks them against evidence the agency doesn't control, which today means site photographs and satellite imagery. It combines the gap between reported and observed progress with budget, schedule, sensor and rainfall signals to produce an explainable 0–100 risk score for each project.
+Government progress reports (MoSPI PAIMANA flash reports) are self-reported by implementing agencies. Axiom checks them against evidence the agency doesn't control, which today means site photographs and satellite imagery. It combines the gap between reported and observed progress with budget, schedule, sensor and rainfall signals to produce an explainable 0–100 risk score for each project.
 
-Built for Smart India Hackathon 2026, problem statement **SIH26103**.
+Built by **Team Nyx** for Smart India Hackathon 2026, problem statement **SIH26103**.
 
 ## Repository layout
 
 | Folder | What it is |
 |---|---|
-| `project-sentinel/backend/` | FastAPI backend, risk engine, ML pipeline, PAIMANA extraction |
-| `sentinel/` | Main web console (TanStack Start + React 19 + Tailwind v4) |
-| `project-sentinel/frontend/` | Earlier React/Vite dashboard, kept as a fallback |
+| `backend/` | FastAPI backend, risk engine, ML pipeline, PAIMANA extraction |
+| `frontend/` | Main web console (TanStack Start + React 19 + Tailwind v4) |
 
 Every figure in the console is labelled by where it comes from: **real** (printed in the PAIMANA report or fetched from a public source), **derived** (computed from real figures), or **simulated / demonstration**. The console's *Provenance* page lists each module and its status.
 
@@ -51,7 +50,7 @@ Every figure in the console is labelled by where it comes from: **real** (printe
 
 Please read this before a demo:
 
-- **Model weights are not in git.** `data/models/` is gitignored. Copy `yolov8_construction_cls.pt` and `yolov8_construction_detect.pt` into `project-sentinel/backend/data/models/`. Without them the classifier falls back to the generic `yolov8n-cls.pt`, which does not produce meaningful completed/incomplete labels.
+- **Model weights are not in git.** `data/models/` is gitignored. Copy `yolov8_construction_cls.pt` and `yolov8_construction_detect.pt` into `backend/data/models/`. Without them the classifier falls back to the generic `yolov8n-cls.pt`, which does not produce meaningful completed/incomplete labels.
 - **The photo classifier training set is small.** It has 30 training and 10 validation images, trained for 5 epochs.
 - **Satellite imagery is served from a committed cache.** `data/satellite_cache/` holds before/after images for the demo sites. `fetch_before_after_images()` exists, but no script in this repo calls it yet to refresh the cache from CDSE, and the capture source of the cached images is not yet confirmed (the API says so).
 - **Satellite imagery is evidence of change, not a % complete.** A pixel comparison can't measure construction progress, so it isn't used as one. The *verified progress* figure is an illustrative stand-in (labelled so) until a site photo passes the integrity checks.
@@ -63,7 +62,7 @@ Please read this before a demo:
 Requires Python 3.11 (tested on Windows).
 
 ```bash
-cd project-sentinel/backend
+cd backend
 python -m venv .venv
 .venv/Scripts/activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
@@ -71,12 +70,12 @@ cp .env.example .env            # optional: add CDSE_CLIENT_ID / CDSE_CLIENT_SEC
 uvicorn app.main:app --reload --port 8000
 ```
 
-On first start the app creates `data/sentinel_v3.db` (SQLite) and seeds 10 monitored projects, all real rows from the PAIMANA report. Interactive API docs are at http://127.0.0.1:8000/docs.
+On first start the app creates `data/axiom.db` (SQLite) and seeds 10 monitored projects, all real rows from the PAIMANA report. Interactive API docs are at http://127.0.0.1:8000/docs.
 
 Then start the console in a second terminal:
 
 ```bash
-cd sentinel
+cd frontend
 npm install
 npm run dev                     # set VITE_API_URL if the backend isn't on http://localhost:8000/api
 ```
