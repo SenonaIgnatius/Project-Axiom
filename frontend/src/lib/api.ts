@@ -464,6 +464,11 @@ export interface ReportProject {
   flags: string[];
   /** Set for the projects with full evidence layers. */
   case_study_id: string | null;
+  /** Out-of-fold early-warning probabilities from the real models. */
+  p_cost_overrun: number | null;
+  p_time_overrun: number | null;
+  /** High predicted risk for an overrun the report doesn't show yet. */
+  watchlist: boolean;
 }
 
 export interface ReportProjectsResponse {
@@ -480,6 +485,7 @@ export interface ReportProjectsResponse {
     flags: { key: string; label: string; severity: "critical" | "medium" | "low" }[];
   };
   case_study_count: number;
+  watchlist_count: number;
   source: string;
 }
 
@@ -489,7 +495,8 @@ export interface ReportQuery {
   ministry?: string;
   flag?: string;
   case_studies?: boolean;
-  sort?: "cost" | "escalation" | "progress" | "name";
+  watchlist?: boolean;
+  sort?: "cost" | "escalation" | "progress" | "name" | "risk_cost" | "risk_time";
   page?: number;
 }
 
@@ -500,3 +507,73 @@ export function getReportProjects(query: ReportQuery = {}) {
   }
   return request<ReportProjectsResponse>(`/paimana/projects?${params.toString()}`);
 }
+
+// ── Real early-warning models (cost / time overrun) ─────────────────────────
+
+export type OverrunTarget = "cost_overrun" | "time_overrun";
+
+export interface ModelScore {
+  label: string;
+  family: string;
+  roc_auc: number;
+  roc_auc_sd: number;
+  pr_auc: number;
+  brier: number;
+  precision_top10: number;
+}
+
+export interface OverrunTargetReport {
+  definition: string;
+  positives: number;
+  base_rate: number;
+  models: Record<string, ModelScore>;
+  best_model: string;
+  ml_gain_over_statistics_auc: number;
+  verdict: string;
+  exposure_sensitivity: { auc_with_age_features: number; auc_deadline_passed_rule: number; note: string };
+  drivers: { feature: string; label: string; importance: number }[];
+  direction: Record<string, unknown>;
+}
+
+export interface OverrunModelsReport {
+  trained_on: number;
+  source: string;
+  report_date: string;
+  validation: string;
+  features: { key: string; label: string }[];
+  excluded_inputs: string;
+  limitations: string[];
+  targets: Record<OverrunTarget, OverrunTargetReport>;
+  watchlist_thresholds: Record<OverrunTarget, number>;
+  overall_rates: Record<OverrunTarget, number>;
+}
+
+export interface OverrunWhy {
+  feature: string;
+  label: string;
+  value: string;
+  group: string;
+  cost_rate: number;
+  time_rate: number;
+}
+
+export interface OverrunPrediction {
+  project_code: string;
+  p_cost_overrun: number;
+  p_time_overrun: number;
+  cost_percentile: number;
+  time_percentile: number;
+  cost_overrun_actual: number;
+  time_overrun_actual: number;
+  cost_escalation_pct: number;
+  delay_months: number;
+  why: OverrunWhy[];
+  watchlist: boolean;
+  overall_rates: Record<OverrunTarget, number>;
+  best_models: Record<OverrunTarget, string>;
+  definitions: Record<OverrunTarget, string>;
+  note: string;
+}
+
+export const getOverrunModels = () => request<OverrunModelsReport>(`/ml/overrun-models`);
+export const getOverrunPrediction = (projectId: string) => request<OverrunPrediction>(`/ml/project/${projectId}`);

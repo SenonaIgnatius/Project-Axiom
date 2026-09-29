@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as DataQualityRouteImport } from './routes/data-quality'
+import { Route as ModelsRouteImport } from './routes/models'
 import { Route as ProvenanceRouteImport } from './routes/provenance'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
@@ -30,6 +31,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
 const DataQualityRoute = DataQualityRouteImport.update({
   id: '/data-quality',
   path: '/data-quality',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModelsRoute = ModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProvenanceRoute = ProvenanceRouteImport.update({
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/data-quality': typeof DataQualityRoute
+  '/models': typeof ModelsRoute
   '/provenance': typeof ProvenanceRoute
   '/report': typeof ReportRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/data-quality': typeof DataQualityRoute
+  '/models': typeof ModelsRoute
   '/provenance': typeof ProvenanceRoute
   '/report': typeof ReportRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/data-quality': typeof DataQualityRoute
+  '/models': typeof ModelsRoute
   '/provenance': typeof ProvenanceRoute
   '/report': typeof ReportRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/data-quality'
+    | '/models'
     | '/provenance'
     | '/report'
     | '/projects/$projectId'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/data-quality'
+    | '/models'
     | '/provenance'
     | '/report'
     | '/projects/$projectId'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analytics'
     | '/data-quality'
+    | '/models'
     | '/provenance'
     | '/report'
     | '/projects/$projectId'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   DataQualityRoute: typeof DataQualityRoute
+  ModelsRoute: typeof ModelsRoute
   ProvenanceRoute: typeof ProvenanceRoute
   ReportRoute: typeof ReportRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/data-quality'
       fullPath: '/data-quality'
       preLoaderRoute: typeof DataQualityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/models': {
+      id: '/models'
+      path: '/models'
+      fullPath: '/models'
+      preLoaderRoute: typeof ModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/provenance': {
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   DataQualityRoute: DataQualityRoute,
+  ModelsRoute: ModelsRoute,
   ProvenanceRoute: ProvenanceRoute,
   ReportRoute: ReportRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,

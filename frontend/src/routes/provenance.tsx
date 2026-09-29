@@ -97,11 +97,11 @@ const ROWS: { what: string; source: string; status: ModuleStatus; label?: string
     note: "0.30 budget + 0.30 schedule + 0.20 reported-vs-verified gap + 0.10 sensor + 0.10 rainfall. It inherits the status of its inputs.",
   },
   {
-    what: "Predictive model and SHAP values",
-    source: "Gradient-boosted trees trained in-app",
-    status: "demonstration",
-    label: "synthetic training",
-    note: "Trained on a synthetic distribution with report-like ranges, not on real project outcomes. Shown to demonstrate the pipeline.",
+    what: "Cost / time-overrun early-warning models",
+    source: "Trained on all 1,392 PAIMANA projects (scripts/train_overrun_models.py)",
+    status: "real",
+    label: "real data · cross-validated",
+    note: "Targets come from the report's own original vs revised cost and dates. Inputs are approval-time facts only. Predictions are out-of-fold. Limits: the report lists only ongoing projects, so on-time completions are missing.",
   },
   {
     what: "Escalation notices",

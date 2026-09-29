@@ -25,6 +25,7 @@ from app.database import get_db
 from app.ml.predictive_model import predictive_risk_model
 from app.models.project import Project
 from app.services.demo_registry import REPORT_REF_DATE, dataset, schedule_features
+from app.services import overrun_model
 from app.services.risk_engine import RiskEngine
 from app.services.sensor_service import SensorService
 from app.services.weather_service import WeatherService
@@ -431,6 +432,8 @@ _SORTS = {
     "escalation": lambda r: -_escalation(r),
     "progress": lambda r: (r.get("physical_progress_pct") is None, r.get("physical_progress_pct") or 0.0),
     "name": lambda r: (r.get("name") or "").lower(),
+    "risk_cost": lambda r: -((overrun_model.prediction(r["project_code"]) or {}).get("p_cost_overrun") or 0.0),
+    "risk_time": lambda r: -((overrun_model.prediction(r["project_code"]) or {}).get("p_time_overrun") or 0.0),
 }
 
 
@@ -441,6 +444,7 @@ async def report_projects(
     ministry: str = "",
     flag: str = "",
     case_studies: bool = False,
+    watchlist: bool = False,
     sort: str = "cost",
     page: int = 1,
     page_size: int = 50,
@@ -468,6 +472,8 @@ async def report_projects(
         if flag and flag not in flags:
             continue
         if case_studies and r["project_code"] not in case:
+            continue
+        if watchlist and not overrun_model.on_watchlist(overrun_model.prediction(r["project_code"])):
             continue
         if needle and not any(
             needle in (r.get(k) or "").lower() for k in ("name", "agency", "state", "project_code", "ministry")
@@ -498,6 +504,9 @@ async def report_projects(
             "source_page": r.get("source_page"),
             "flags": flags,
             "case_study_id": case.get(r["project_code"]),
+            "p_cost_overrun": (overrun_model.prediction(r["project_code"]) or {}).get("p_cost_overrun"),
+            "p_time_overrun": (overrun_model.prediction(r["project_code"]) or {}).get("p_time_overrun"),
+            "watchlist": overrun_model.on_watchlist(overrun_model.prediction(r["project_code"])),
         }
 
     all_rows = data["projects"]
@@ -522,5 +531,41 @@ async def report_projects(
             "flags": [{"key": k, "label": lab, "severity": sev} for k, sev, lab, _ in DQ_RULES],
         },
         "case_study_count": len(case),
+        "watchlist_count": sum(1 for p in overrun_model.predictions().values() if overrun_model.on_watchlist(p)),
         "source": data.get("source"),
+    }
+
+
+# ── real early-warning models (cost / time overrun) ─────────────────────────
+
+@router.get("/ml/overrun-models")
+async def overrun_models():
+    """Cross-validated comparison of statistical vs ML models, drivers and limitations."""
+    r = overrun_model.report()
+    if not r:
+        raise HTTPException(status_code=404, detail="Models not trained yet: run scripts/train_overrun_models.py")
+    return r
+
+
+@router.get("/ml/project/{project_id}")
+async def overrun_prediction(project_id: str, db: AsyncSession = Depends(get_db)):
+    """Early-warning prediction for one project (case-study ID or PAIMANA code), with its reasons."""
+    code = project_id
+    if not overrun_model.prediction(code):
+        project = (await db.execute(select(Project).where(Project.id == project_id))).scalar_one_or_none()
+        code = project.project_code if project else None
+    pred = overrun_model.prediction(code)
+    r = overrun_model.report()
+    if not pred or not r:
+        raise HTTPException(status_code=404, detail=f"No prediction for {project_id}")
+    return {
+        "project_code": code,
+        **pred,
+        "watchlist": overrun_model.on_watchlist(pred),
+        "overall_rates": r["overall_rates"],
+        "best_models": {t: r["targets"][t]["models"][r["targets"][t]["best_model"]]["label"] for t in r["targets"]},
+        "definitions": {t: r["targets"][t]["definition"] for t in r["targets"]},
+        "note": ("Out-of-fold prediction: this project was scored by a model that never saw it. Inputs are only "
+                 "facts known at approval (sector, ministry, cost, planned duration, approval-to-start gap, "
+                 "multi-state), so the prediction doesn't change as the project reports progress."),
     }

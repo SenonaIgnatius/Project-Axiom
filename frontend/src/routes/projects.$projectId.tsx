@@ -13,6 +13,8 @@ import {
   getRiskBreakdown,
   getAssetHealth,
   classifySitePhoto,
+  getOverrunPrediction,
+  type OverrunPrediction,
   type SiteChange,
   type PhotoIntegrity,
   type IntegrityCheck,
@@ -111,10 +113,11 @@ function ProjectDetail() {
 
   // Escalation (simulated) state
   const [notice, setNotice] = useState<EscalationNotice | null>(null);
+  const [early, setEarly] = useState<OverrunPrediction | null>(null);
   const [drafting, setDrafting] = useState(false);
 
   // Panel load failures are shown, never silently replaced with other numbers
-  type Panel = "risk" | "imagery" | "telemetry" | "benchmark" | "history" | "scenario" | "escalation";
+  type Panel = "risk" | "imagery" | "telemetry" | "benchmark" | "history" | "scenario" | "escalation" | "early";
   const [errors, setErrors] = useState<Partial<Record<Panel, string>>>({});
   const fail = (key: Panel) => (e: any) => setErrors((prev) => ({ ...prev, [key]: String(e?.message || e) }));
   
@@ -141,6 +144,7 @@ function ProjectDetail() {
     getSatelliteChangeDetection(p.id).then(setSatAnalysis).catch(fail("imagery"));
     getAssetHealth(assetId).then(setAssetHealth).catch(fail("telemetry"));
     getPeerBenchmark(p.id).then(setPeerBenchmark).catch(fail("benchmark"));
+    getOverrunPrediction(p.id).then(setEarly).catch(fail("early"));
 
     getProjectHistory(p.id)
       .then((hist) => {
@@ -505,101 +509,109 @@ function ProjectDetail() {
         )}
       </section>
 
-      {/* 03. Predictive ML Model (XGBoost GBDT + SHAP Explainability) */}
+      {/* 03. Early-warning prediction (real models trained on the whole report) */}
       <section className="border-b border-border py-12">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="label-xs">Layer 03 · Predictive Machine Learning & Explainability</div>
-            <h2 className="mt-3 text-2xl">Gradient-Boosted Trees & SHAP Contributions</h2>
+            <div className="label-xs">Layer 03 · Early-Warning Prediction</div>
+            <h2 className="mt-3 text-2xl">Would This Project Have Been Flagged at Approval?</h2>
           </div>
-          <div className="flex flex-col items-start sm:items-end gap-1.5 font-mono text-[11px]">
-            <StatusPill status="demonstration">synthetic training data</StatusPill>
-            <span className="max-w-sm text-[10px] text-muted-foreground sm:text-right">
-              Trained on a synthetic distribution, not real project outcomes — shown to demonstrate the pipeline.
-              The risk score in Layer 02 does not use it.
-            </span>
+          <div className="flex flex-col items-start gap-1.5 font-mono text-[11px] sm:items-end">
+            <StatusPill status="real">real data · cross-validated</StatusPill>
+            <Link to="/models" className="text-[10px] text-muted-foreground underline hover:text-foreground">
+              How the models were trained and compared →
+            </Link>
           </div>
         </div>
 
-        {riskBreakdown?.predictive_ml ? (
+        {errors.early && <LoadError what="the early-warning prediction" error={errors.early} />}
+
+        {early ? (
           <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-12">
-            {/* Probability Gauges */}
-            <div className="md:col-span-5 space-y-4">
-              <div className="border border-border p-5 bg-surface/30 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="label-xs">Predictive Risk Forecast</div>
-                  <div className="text-[10px] font-mono text-muted-foreground truncate max-w-[200px]" title={riskBreakdown.predictive_ml.model_type}>
-                    {riskBreakdown.predictive_ml.model_type}
+            <div className="space-y-4 md:col-span-5">
+              {(
+                [
+                  ["Cost overrun ≥ 20%", early.p_cost_overrun, early.cost_percentile, early.overall_rates.cost_overrun,
+                    early.cost_overrun_actual, `report: ${early.cost_escalation_pct >= 0 ? "+" : ""}${early.cost_escalation_pct}% cost`, "cost_overrun"],
+                  ["Delay ≥ 12 months", early.p_time_overrun, early.time_percentile, early.overall_rates.time_overrun,
+                    early.time_overrun_actual, early.delay_months > 0 ? `report: ${Math.round(early.delay_months)} months late` : "report: not late", "time_overrun"],
+                ] as const
+              ).map(([label, prob, pctile, base, actual, actualText, key]) => (
+                <div key={key} className="border border-border bg-surface/30 p-5">
+                  <div className="flex items-baseline justify-between">
+                    <span className="label-xs">{label}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">{early.best_models[key]}</span>
                   </div>
-                </div>
-                
-                <div>
-                  <div className="flex justify-between text-xs font-mono mb-1">
-                    <span>P(Delay &gt; 6 months)</span>
-                    <span className="font-bold font-display text-base">
-                      {(riskBreakdown.predictive_ml.p_delay_over_6mo * 100).toFixed(1)}%
+                  <div className="mt-2 flex items-baseline gap-3">
+                    <span className="font-display text-4xl font-extrabold tabular-nums">{Math.round(prob * 100)}%</span>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      riskier than {pctile}% of projects · base rate {Math.round(base * 100)}%
                     </span>
                   </div>
-                  <div className="h-2 w-full bg-border rounded-full overflow-hidden">
+                  <div className="mt-3 h-2 w-full bg-border">
                     <div
-                      className="h-full bg-amber-400"
-                      style={{ width: `${riskBreakdown.predictive_ml.p_delay_over_6mo * 100}%` }}
+                      className={`h-full rounded-r-[4px] ${prob >= 0.6 ? "bg-red-400" : prob >= 0.35 ? "bg-amber-400" : "bg-emerald-400"}`}
+                      style={{ width: `${Math.max(2, prob * 100)}%` }}
                     />
                   </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-mono mb-1">
-                    <span>P(Cost Overrun &gt; 20%)</span>
-                    <span className="font-bold font-display text-base">
-                      {(riskBreakdown.predictive_ml.p_cost_overrun_over_20pct * 100).toFixed(1)}%
+                  <div className="mt-3 font-mono text-[11px]">
+                    <span className={actual ? "text-red-400" : "text-emerald-400"}>
+                      {actual ? "It did overrun" : "No overrun yet"}
                     </span>
-                  </div>
-                  <div className="h-2 w-full bg-border rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-red-400"
-                      style={{ width: `${riskBreakdown.predictive_ml.p_cost_overrun_over_20pct * 100}%` }}
-                    />
+                    <span className="text-muted-foreground"> · {actualText}</span>
                   </div>
                 </div>
-
-                <div className="border-t border-border pt-3 font-mono text-xs text-muted-foreground flex justify-between">
-                  <span>ML Risk Trend:</span>
-                  <span className="font-bold text-foreground">{riskBreakdown.predictive_ml.ml_risk_trend}</span>
+              ))}
+              {early.watchlist && (
+                <div className="border-l-2 border-sky-400 bg-sky-500/10 p-3 font-mono text-[11px] text-sky-400">
+                  On the early-warning watchlist: high predicted risk for an overrun the report doesn't show yet.
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* SHAP Ranked Factors */}
-            <div className="md:col-span-7 border border-border p-5 bg-surface/30 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="label-xs">SHAP Value Feature Attribution</div>
-                <span className="font-mono text-[10px] text-muted-foreground">Ranked by Absolute Impact</span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                SHAP (SHapley Additive exPlanations) breaks down the exact positive or negative contribution of each feature towards the distress prediction:
+            <div className="border border-border bg-surface/30 p-5 md:col-span-7">
+              <div className="label-xs">Why — how often similar projects overran</div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                For each input the model uses, the group this project falls in and that group's overrun rate across
+                all {"1,392"} projects in the report.
               </p>
-
-              <div className="space-y-2.5 pt-2">
-                {riskBreakdown.predictive_ml.shap_explainability.map((item, idx) => (
-                  <div key={item.feature} className="border border-border/80 p-2.5 bg-background text-xs font-mono flex items-center justify-between">
-                    <div>
-                      <span className="text-muted-foreground mr-2">#{idx + 1}</span>
-                      <strong className="text-foreground">{item.feature.replace(/_/g, " ")}</strong>
-                      <span className="text-muted-foreground text-[11px] ml-2">(raw: {item.raw_value})</span>
-                    </div>
-                    <div className={`font-bold tabular-nums ${item.shap_value >= 0 ? "text-red-400" : "text-green-400"}`}>
-                      {item.shap_value >= 0 ? "+" : ""}{item.shap_value.toFixed(4)} ({item.impact.replace("_", " ")})
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <table className="mt-4 w-full font-mono text-xs">
+                <thead className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr className="border-b border-border">
+                    <th className="py-2 text-left font-medium">Input</th>
+                    <th className="py-2 text-left font-medium">This project</th>
+                    <th className="py-2 text-right font-medium">Cost overrun</th>
+                    <th className="py-2 text-right font-medium">Delay</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {early.why.map((w) => (
+                    <tr key={w.feature}>
+                      <td className="py-2 text-muted-foreground">{w.label}</td>
+                      <td className="py-2 text-foreground/90">
+                        {w.value}
+                        {w.group !== w.value && <span className="text-muted-foreground"> · {w.group}</span>}
+                      </td>
+                      <td className={`py-2 text-right tabular-nums ${w.cost_rate > early.overall_rates.cost_overrun * 1.2 ? "text-red-400" : ""}`}>
+                        {Math.round(w.cost_rate * 100)}%
+                      </td>
+                      <td className={`py-2 text-right tabular-nums ${w.time_rate > early.overall_rates.time_overrun * 1.2 ? "text-red-400" : ""}`}>
+                        {Math.round(w.time_rate * 100)}%
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-border">
+                    <td className="py-2 text-muted-foreground" colSpan={2}>All projects</td>
+                    <td className="py-2 text-right tabular-nums">{Math.round(early.overall_rates.cost_overrun * 100)}%</td>
+                    <td className="py-2 text-right tabular-nums">{Math.round(early.overall_rates.time_overrun * 100)}%</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">{early.note}</p>
             </div>
           </div>
         ) : (
-          !errors.risk && (
-            <div className="mt-6 font-mono text-xs text-muted-foreground">Loading…</div>
-          )
+          !errors.early && <div className="mt-6 font-mono text-xs text-muted-foreground">Loading…</div>
         )}
       </section>
 
@@ -1509,23 +1521,11 @@ function ProjectDetail() {
                 </div>
 
                 <div className="p-4 font-mono col-span-2 md:col-span-1">
-                  <span className="label-xs">Predictive Model (synthetic-trained)</span>
-                  <div className="mt-2 text-xs space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">P(Delay &gt; 6mo):</span>
-                      <strong className={scenarioData.delta.p_delay_delta > 0 ? "text-red-400" : "text-emerald-400"}>
-                        {(scenarioData.scenario.predictive_ml.p_delay_over_6mo * 100).toFixed(0)}%
-                        <span className="text-[10px] ml-1">({scenarioData.delta.p_delay_delta > 0 ? "+" : ""}{(scenarioData.delta.p_delay_delta * 100).toFixed(0)}%)</span>
-                      </strong>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">P(Cost &gt; 20%):</span>
-                      <strong className={scenarioData.delta.p_cost_delta > 0 ? "text-red-400" : "text-emerald-400"}>
-                        {(scenarioData.scenario.predictive_ml.p_cost_overrun_over_20pct * 100).toFixed(0)}%
-                        <span className="text-[10px] ml-1">({scenarioData.delta.p_cost_delta > 0 ? "+" : ""}{(scenarioData.delta.p_cost_delta * 100).toFixed(0)}%)</span>
-                      </strong>
-                    </div>
-                  </div>
+                  <span className="label-xs">Early-warning model</span>
+                  <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                    Unchanged: it predicts from approval-time facts only, so reported progress or spending can't move
+                    it (see Layer 03).
+                  </p>
                 </div>
               </div>
 

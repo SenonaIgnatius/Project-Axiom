@@ -31,11 +31,18 @@ Every figure in the console is labelled by where it comes from: **real** (printe
 **Also included:**
 - **PAIMANA PDF ingestion** (`pdfplumber`): `POST /api/pipeline/ingest-paimana`
 - **Transparent weighted risk formula** with a per-factor breakdown: `GET /api/projects/{id}/risk-breakdown`
-- **XGBoost delay and cost-overrun model with SHAP explanations**
 - **K-means risk clustering**
 - **Open-Meteo rainfall exposure**
 
 **Added for the SIH prototype:**
+- **Early-warning models trained on real data** (`scripts/train_overrun_models.py`): cost-overrun (≥20%) and time-overrun (≥12 months) models trained on all 1,392 PAIMANA projects, using only facts known at approval (sector, ministry, original cost, planned duration, approval-to-start gap, multi-state). Logistic regression (conventional statistics) is compared with random forest and gradient boosting (ML) by repeated stratified 5-fold cross-validation:
+
+  | Target | Logistic regression | Random forest (best) | Top-10% hit rate vs base rate |
+  |---|---|---|---|
+  | Cost overrun ≥20% | ROC-AUC 0.74 | **0.77** | 41% vs 14% |
+  | Delay ≥12 months | ROC-AUC 0.63 | **0.71** | 87% vs 42% |
+
+  Every prediction shown in the app is out-of-fold. Driver analysis uses permutation importance. The **early-warning watchlist** lists projects with top-10% predicted risk for an overrun the report doesn't show yet. Results are in `data/ml/`.
 - **Full PAIMANA extraction** (`scripts/extract_paimana_dataset.py`): all 1,392 ongoing projects from the Dec 2025 flash report, sectors taken from the report's own ministry headings, each row keeping the PDF page it came from.
 - **Source citation**: every monitored project links to its highlighted row in the real report page (`/api/projects/{id}/source-page`, `/api/paimana/page/{page}`).
 - **Report Audit** (`/api/data-quality`): six consistency checks run over every row of the report, flagging rows that contradict themselves.
@@ -54,7 +61,7 @@ Please read this before a demo:
 - **The photo classifier training set is small.** It has 30 training and 10 validation images, trained for 5 epochs.
 - **Satellite imagery is served from a committed cache.** `data/satellite_cache/` holds before/after images for the demo sites. `fetch_before_after_images()` exists, but no script in this repo calls it yet to refresh the cache from CDSE, and the capture source of the cached images is not yet confirmed (the API says so).
 - **Satellite imagery is evidence of change, not a % complete.** A pixel comparison can't measure construction progress, so it isn't used as one. The *verified progress* figure is an illustrative stand-in (labelled so) until a site photo passes the integrity checks.
-- **The predictive risk model is trained on 600 synthetic samples** calibrated to plausible ranges, not on historical outcomes.
+- **Early-warning model limits.** The flash report lists only ongoing projects, so on-time completions are missing (survivorship) and recent projects have had less time to overrun (censoring). Historical editions and the full CUF fields would improve it. The earlier synthetic-trained model (`app/ml/predictive_model.py`) is no longer shown in the console; it only remains in the `predictive_ml` field of the risk API for compatibility.
 - **Sensor telemetry is simulated.** No physical sensors exist. `scripts/generate_sensor_telemetry.py` writes `data/sensors.csv`, with stress levels derived from each project's real PAIMANA delay and budget figures. Assets with no telemetry are reported as unavailable.
 
 ## Running it
@@ -80,7 +87,7 @@ npm install
 npm run dev                     # set VITE_API_URL if the backend isn't on http://localhost:8000/api
 ```
 
-Optional data refresh: `python scripts/fetch_rainfall.py` (real rainfall) and `python scripts/generate_sensor_telemetry.py` (simulated telemetry).
+Optional data refresh: `python scripts/fetch_rainfall.py` (real rainfall), `python scripts/generate_sensor_telemetry.py` (simulated telemetry) and `python scripts/train_overrun_models.py` (retrain the early-warning models).
 
 The app reads the CDSE credentials with `os.getenv`, so either export them in your shell or load `.env` with your process manager. Credentials are free from https://dataspace.copernicus.eu/.
 
@@ -89,7 +96,8 @@ The app reads the CDSE credentials with `os.getenv`, so either export them in yo
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/projects`, `/api/projects/{id}` | Project register |
-| GET | `/api/projects/{id}/risk`, `/api/projects/{id}/risk-breakdown` | Weighted risk score, discrepancy details, XGBoost + SHAP |
+| GET | `/api/projects/{id}/risk`, `/api/projects/{id}/risk-breakdown` | Weighted risk score and discrepancy details |
+| GET | `/api/ml/overrun-models`, `/api/ml/project/{id}` | Early-warning model comparison, drivers, per-project prediction |
 | GET | `/api/model-validation` | Clustering / model validation summary |
 | POST | `/api/photos/classify` | YOLOv8 site-photo verification |
 | GET | `/api/photos/{project_id}` | Photo history for a project |

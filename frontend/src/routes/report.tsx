@@ -5,11 +5,15 @@ import { LoadError, StatusPill } from "@/components/provenance";
 import { inrCrore } from "@/data/projects";
 
 export const Route = createFileRoute("/report")({
-  loader: async () => {
+  validateSearch: (search: Record<string, unknown>): { watchlist?: boolean } =>
+    search["watchlist"] === true || search["watchlist"] === "true" || search["watchlist"] === 1 ? { watchlist: true } : {},
+  loaderDeps: ({ search }) => ({ watchlist: !!search.watchlist }),
+  loader: async ({ deps }) => {
     try {
-      return { initial: await getReportProjects({ sort: "cost" }), error: null as string | null };
+      const q: ReportQuery = deps.watchlist ? { sort: "risk_cost", watchlist: true } : { sort: "cost" };
+      return { initial: await getReportProjects(q), error: null as string | null, startQuery: q };
     } catch (e: any) {
-      return { initial: null as ReportProjectsResponse | null, error: String(e?.message || e) };
+      return { initial: null as ReportProjectsResponse | null, error: String(e?.message || e), startQuery: { sort: "cost" } as ReportQuery };
     }
   },
   head: () => ({
@@ -34,13 +38,13 @@ const pct = (n: number | null) => (n == null ? "—" : `${n}%`);
 const cr = (n: number | null) => (n == null ? "—" : inrCrore(n));
 
 function ReportPage() {
-  const { initial, error: loadError } = Route.useLoaderData();
+  const { initial, error: loadError, startQuery } = Route.useLoaderData();
   const [data, setData] = useState<ReportProjectsResponse | null>(initial);
   const [error, setError] = useState<string | null>(loadError);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [filters, setFilters] = useState<Omit<ReportQuery, "q" | "page">>({ sort: "cost" });
+  const [filters, setFilters] = useState<Omit<ReportQuery, "q" | "page">>(startQuery);
   const [page, setPage] = useState(1);
   const first = useRef(true);
 
@@ -103,7 +107,8 @@ function ReportPage() {
             agencies' reported figures only. The {data.case_study_count}{" "}
             <span className="text-foreground">case studies</span> also carry independent evidence (site imagery or
             site photos); extending that to every project needs each site's location, which the report doesn't
-            publish.
+            publish. P(cost) and P(delay) come from the <Link to="/models" className="underline">early-warning
+            models</Link>, trained on these same rows using only approval-time facts.
           </p>
         </div>
         <div className="text-right">
@@ -162,6 +167,8 @@ function ReportPage() {
           <option value="escalation">Sort: highest cost escalation</option>
           <option value="progress">Sort: lowest progress</option>
           <option value="name">Sort: name</option>
+          <option value="risk_cost">Sort: predicted cost-overrun risk</option>
+          <option value="risk_time">Sort: predicted delay risk</option>
         </select>
         <label className="flex cursor-pointer items-center gap-2 font-mono text-[11px] text-muted-foreground">
           <input
@@ -170,6 +177,19 @@ function ReportPage() {
             onChange={(e) => setFilter({ case_studies: e.target.checked })}
           />
           Case studies only
+        </label>
+        <label
+          className="flex cursor-pointer items-center gap-2 font-mono text-[11px] text-sky-400"
+          title="High predicted risk (top 10%) of an overrun the report doesn't show yet"
+        >
+          <input
+            type="checkbox"
+            checked={!!filters.watchlist}
+            onChange={(e) =>
+              setFilter(e.target.checked ? { watchlist: true, sort: "risk_cost" } : { watchlist: false })
+            }
+          />
+          Early-warning watchlist ({data.watchlist_count})
         </label>
       </div>
 
@@ -180,7 +200,7 @@ function ReportPage() {
         <table className="w-full text-left font-mono text-xs">
           <thead className="border-b border-border bg-background/50 text-[10px] uppercase tracking-wider text-muted-foreground">
             <tr>
-              {["Code", "Project", "Sector", "State", "Revised cost ₹cr", "Escalation", "Spent ₹cr", "Progress", "Revised end", "Audit flags", "Source"].map(
+              {["Code", "Project", "Sector", "State", "Revised cost ₹cr", "Escalation", "Spent ₹cr", "Progress", "Revised end", "P(cost ≥20%)", "P(delay ≥12m)", "Audit flags", "Source"].map(
                 (h) => (
                   <th key={h} className="whitespace-nowrap px-3 py-2.5 font-medium">
                     {h}
@@ -198,6 +218,14 @@ function ReportPage() {
                     {r.name}
                   </div>
                   {r.agency && <div className="mt-0.5 text-[10px] text-muted-foreground line-clamp-1">{r.agency}</div>}
+                  {r.watchlist && (
+                    <span
+                      className="mr-1.5 mt-1 inline-block border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-sky-400"
+                      title="High predicted overrun risk that the report doesn't show yet"
+                    >
+                      Watchlist
+                    </span>
+                  )}
                   {r.case_study_id && (
                     <Link
                       to="/projects/$projectId"
@@ -228,6 +256,12 @@ function ReportPage() {
                 <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">{pct(r.physical_progress_pct)}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
                   {r.revised_completion || r.original_completion || "—"}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+                  <RiskCell p={r.p_cost_overrun} />
+                </td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+                  <RiskCell p={r.p_time_overrun} />
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex max-w-[260px] flex-wrap gap-1">
@@ -265,7 +299,7 @@ function ReportPage() {
             ))}
             {data.projects.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-10 text-center text-muted-foreground">
+                <td colSpan={13} className="px-3 py-10 text-center text-muted-foreground">
                   No projects match these filters.
                 </td>
               </tr>
@@ -298,4 +332,11 @@ function ReportPage() {
       </div>
     </div>
   );
+}
+
+/** Out-of-fold probability from the real early-warning model. */
+function RiskCell({ p }: { p: number | null }) {
+  if (p == null) return <span className="text-muted-foreground/60">—</span>;
+  const cls = p >= 0.6 ? "text-red-400 font-bold" : p >= 0.35 ? "text-amber-400" : "text-muted-foreground";
+  return <span className={cls}>{Math.round(p * 100)}%</span>;
 }

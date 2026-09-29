@@ -124,6 +124,7 @@ const NAV = [
   { to: "/", label: "Overview" },
   { to: "/projects", label: "Case Studies" },
   { to: "/report", label: "All Projects" },
+  { to: "/models", label: "Models" },
   { to: "/analytics", label: "Analytics" },
   { to: "/data-quality", label: "Report Audit" },
   { to: "/provenance", label: "Provenance" },

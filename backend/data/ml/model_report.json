@@ -1,0 +1,417 @@
+{
+ "trained_on": 1392,
+ "source": "MoSPI PAIMANA flash report, December 2025 (all ongoing projects)",
+ "report_date": "2025-12-31",
+ "validation": "5-fold stratified cross-validation, repeated 3 times; predictions shown are out-of-fold",
+ "features": [
+  {
+   "key": "sector",
+   "label": "Sector"
+  },
+  {
+   "key": "ministry_group",
+   "label": "Ministry"
+  },
+  {
+   "key": "log_original_cost",
+   "label": "Original cost (size)"
+  },
+  {
+   "key": "planned_duration_m",
+   "label": "Planned duration"
+  },
+  {
+   "key": "approval_to_start_m",
+   "label": "Approval-to-start gap"
+  },
+  {
+   "key": "multi_state",
+   "label": "Spans multiple states"
+  }
+ ],
+ "excluded_inputs": "Expenditure, physical progress and any revised figure (they would leak the outcome); project age and start year (they mostly encode whether the deadline has already passed).",
+ "limitations": [
+  "The flash report lists only ongoing projects: projects completed on time are absent, so rates are higher than across all sanctioned projects.",
+  "Recent projects have had less time to overrun (censoring), which understates their risk.",
+  "Only the flash report's columns are available; the full Common Upload Form (CUF) fields on the PAIMANA portal would likely add predictive power.",
+  "Cross-sectional (one edition). Training on successive editions would allow true forward-looking validation."
+ ],
+ "targets": {
+  "cost_overrun": {
+   "definition": "Revised cost at least 20% above the original sanctioned cost",
+   "positives": 200,
+   "base_rate": 0.144,
+   "models": {
+    "logistic_regression": {
+     "label": "Logistic regression",
+     "family": "conventional statistics",
+     "roc_auc": 0.74,
+     "roc_auc_sd": 0.033,
+     "pr_auc": 0.348,
+     "brier": 0.207,
+     "precision_top10": 0.336
+    },
+    "random_forest": {
+     "label": "Random forest",
+     "family": "machine learning",
+     "roc_auc": 0.769,
+     "roc_auc_sd": 0.03,
+     "pr_auc": 0.377,
+     "brier": 0.145,
+     "precision_top10": 0.41
+    },
+    "gradient_boosting": {
+     "label": "Gradient boosting (XGBoost)",
+     "family": "machine learning",
+     "roc_auc": 0.744,
+     "roc_auc_sd": 0.026,
+     "pr_auc": 0.338,
+     "brier": 0.166,
+     "precision_top10": 0.388
+    }
+   },
+   "best_model": "random_forest",
+   "ml_gain_over_statistics_auc": 0.029,
+   "verdict": "Random forest beats logistic regression by +0.029 ROC-AUC.",
+   "exposure_sensitivity": {
+    "auc_with_age_features": 0.835,
+    "auc_deadline_passed_rule": 0.612,
+    "note": "Adding project age/start year raises the score, but mostly because an ongoing project past its original deadline is late by definition. The app uses the approval-time model."
+   },
+   "drivers": [
+    {
+     "feature": "planned_duration_m",
+     "label": "Planned duration",
+     "importance": 0.157
+    },
+    {
+     "feature": "log_original_cost",
+     "label": "Original cost (size)",
+     "importance": 0.1529
+    },
+    {
+     "feature": "approval_to_start_m",
+     "label": "Approval-to-start gap",
+     "importance": 0.0893
+    },
+    {
+     "feature": "ministry_group",
+     "label": "Ministry",
+     "importance": 0.0734
+    },
+    {
+     "feature": "sector",
+     "label": "Sector",
+     "importance": 0.0312
+    },
+    {
+     "feature": "multi_state",
+     "label": "Spans multiple states",
+     "importance": 0.012
+    }
+   ],
+   "direction": {
+    "log_original_cost": {
+     "high": 0.209,
+     "low": 0.067,
+     "high_label": "top third",
+     "low_label": "bottom third"
+    },
+    "planned_duration_m": {
+     "high": 0.205,
+     "low": 0.1,
+     "high_label": "top third",
+     "low_label": "bottom third"
+    },
+    "approval_to_start_m": {
+     "high": 0.166,
+     "low": 0.147,
+     "high_label": "top third",
+     "low_label": "bottom third"
+    },
+    "multi_state": {
+     "high": 0.191,
+     "low": 0.138,
+     "high_label": "multi-state",
+     "low_label": "single state"
+    },
+    "sector": [
+     {
+      "value": "Water",
+      "rate": 0.343,
+      "n": 70
+     },
+     {
+      "value": "Railways",
+      "rate": 0.192,
+      "n": 276
+     },
+     {
+      "value": "Power",
+      "rate": 0.153,
+      "n": 118
+     },
+     {
+      "value": "Roads",
+      "rate": 0.125,
+      "n": 584
+     },
+     {
+      "value": "Other",
+      "rate": 0.093,
+      "n": 344
+     }
+    ],
+    "ministry_group": [
+     {
+      "value": "Department of Water Resources, River Development & GR",
+      "rate": 0.511,
+      "n": 47
+     },
+     {
+      "value": "Ministry of Railways",
+      "rate": 0.205,
+      "n": 249
+     },
+     {
+      "value": "Other ministries",
+      "rate": 0.19,
+      "n": 58
+     },
+     {
+      "value": "Ministry of Petroleum & Natural Gas",
+      "rate": 0.162,
+      "n": 111
+     },
+     {
+      "value": "Ministry of Power",
+      "rate": 0.16,
+      "n": 94
+     },
+     {
+      "value": "Ministry of Road Transport & Highways",
+      "rate": 0.125,
+      "n": 584
+     },
+     {
+      "value": "Ministry of Steel",
+      "rate": 0.1,
+      "n": 20
+     },
+     {
+      "value": "Ministry of Civil Aviation",
+      "rate": 0.08,
+      "n": 25
+     },
+     {
+      "value": "Department of Higher Education",
+      "rate": 0.036,
+      "n": 28
+     },
+     {
+      "value": "Ministry of Housing & Urban Affairs",
+      "rate": 0.019,
+      "n": 53
+     },
+     {
+      "value": "Ministry of Coal",
+      "rate": 0.016,
+      "n": 123
+     }
+    ]
+   }
+  },
+  "time_overrun": {
+   "definition": "Completion at least 12 months late (revised vs original date; for overdue projects with no revised date, time already elapsed)",
+   "positives": 587,
+   "base_rate": 0.422,
+   "models": {
+    "logistic_regression": {
+     "label": "Logistic regression",
+     "family": "conventional statistics",
+     "roc_auc": 0.627,
+     "roc_auc_sd": 0.024,
+     "pr_auc": 0.573,
+     "brier": 0.235,
+     "precision_top10": 0.664
+    },
+    "random_forest": {
+     "label": "Random forest",
+     "family": "machine learning",
+     "roc_auc": 0.714,
+     "roc_auc_sd": 0.024,
+     "pr_auc": 0.683,
+     "brier": 0.21,
+     "precision_top10": 0.874
+    },
+    "gradient_boosting": {
+     "label": "Gradient boosting (XGBoost)",
+     "family": "machine learning",
+     "roc_auc": 0.691,
+     "roc_auc_sd": 0.025,
+     "pr_auc": 0.656,
+     "brier": 0.218,
+     "precision_top10": 0.85
+    }
+   },
+   "best_model": "random_forest",
+   "ml_gain_over_statistics_auc": 0.087,
+   "verdict": "Random forest beats logistic regression by +0.087 ROC-AUC.",
+   "exposure_sensitivity": {
+    "auc_with_age_features": 0.925,
+    "auc_deadline_passed_rule": 0.777,
+    "note": "Adding project age/start year raises the score, but mostly because an ongoing project past its original deadline is late by definition. The app uses the approval-time model."
+   },
+   "drivers": [
+    {
+     "feature": "approval_to_start_m",
+     "label": "Approval-to-start gap",
+     "importance": 0.163
+    },
+    {
+     "feature": "log_original_cost",
+     "label": "Original cost (size)",
+     "importance": 0.128
+    },
+    {
+     "feature": "planned_duration_m",
+     "label": "Planned duration",
+     "importance": 0.1269
+    },
+    {
+     "feature": "ministry_group",
+     "label": "Ministry",
+     "importance": 0.0892
+    },
+    {
+     "feature": "sector",
+     "label": "Sector",
+     "importance": 0.0773
+    },
+    {
+     "feature": "multi_state",
+     "label": "Spans multiple states",
+     "importance": 0.0119
+    }
+   ],
+   "direction": {
+    "log_original_cost": {
+     "high": 0.425,
+     "low": 0.444,
+     "high_label": "top third",
+     "low_label": "bottom third"
+    },
+    "planned_duration_m": {
+     "high": 0.412,
+     "low": 0.414,
+     "high_label": "top third",
+     "low_label": "bottom third"
+    },
+    "approval_to_start_m": {
+     "high": 0.417,
+     "low": 0.366,
+     "high_label": "top third",
+     "low_label": "bottom third"
+    },
+    "multi_state": {
+     "high": 0.474,
+     "low": 0.415,
+     "high_label": "multi-state",
+     "low_label": "single state"
+    },
+    "sector": [
+     {
+      "value": "Water",
+      "rate": 0.829,
+      "n": 70
+     },
+     {
+      "value": "Roads",
+      "rate": 0.45,
+      "n": 584
+     },
+     {
+      "value": "Railways",
+      "rate": 0.384,
+      "n": 276
+     },
+     {
+      "value": "Other",
+      "rate": 0.369,
+      "n": 344
+     },
+     {
+      "value": "Power",
+      "rate": 0.28,
+      "n": 118
+     }
+    ],
+    "ministry_group": [
+     {
+      "value": "Department of Water Resources, River Development & GR",
+      "rate": 0.745,
+      "n": 47
+     },
+     {
+      "value": "Ministry of Housing & Urban Affairs",
+      "rate": 0.736,
+      "n": 53
+     },
+     {
+      "value": "Other ministries",
+      "rate": 0.517,
+      "n": 58
+     },
+     {
+      "value": "Department of Higher Education",
+      "rate": 0.5,
+      "n": 28
+     },
+     {
+      "value": "Ministry of Road Transport & Highways",
+      "rate": 0.45,
+      "n": 584
+     },
+     {
+      "value": "Ministry of Petroleum & Natural Gas",
+      "rate": 0.423,
+      "n": 111
+     },
+     {
+      "value": "Ministry of Railways",
+      "rate": 0.369,
+      "n": 249
+     },
+     {
+      "value": "Ministry of Civil Aviation",
+      "rate": 0.32,
+      "n": 25
+     },
+     {
+      "value": "Ministry of Coal",
+      "rate": 0.276,
+      "n": 123
+     },
+     {
+      "value": "Ministry of Power",
+      "rate": 0.245,
+      "n": 94
+     },
+     {
+      "value": "Ministry of Steel",
+      "rate": 0.1,
+      "n": 20
+     }
+    ]
+   }
+  }
+ },
+ "watchlist_thresholds": {
+  "cost_overrun": 0.63,
+  "time_overrun": 0.737
+ },
+ "overall_rates": {
+  "cost_overrun": 0.144,
+  "time_overrun": 0.422
+ }
+}

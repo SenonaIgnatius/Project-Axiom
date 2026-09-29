@@ -184,12 +184,12 @@ export const MODULES: Module[] = [
   },
   {
     code: "M-10",
-    name: "Predictive Model",
-    status: "demonstration",
+    name: "Early-Warning Models",
+    status: "real",
     summary:
-      "Gradient-boosted trees with SHAP explanations, trained on a synthetic distribution — shown to demonstrate the pipeline, not as a validated predictor.",
-    inputs: "Budget variance, slippage, discrepancy, rainfall",
-    output: "Indicative delay / overrun probabilities",
+      "Cost-overrun and time-overrun models trained on all 1,392 projects in the PAIMANA report, using only facts known at approval. Logistic regression (statistics) is compared with random forest and gradient boosting (ML) by cross-validation; every prediction shown is out-of-fold.",
+    inputs: "Sector, ministry, original cost, planned duration, approval-to-start gap, multi-state",
+    output: "P(cost overrun ≥20%), P(delay ≥12 months), drivers, early-warning watchlist",
   },
   {
     code: "M-11",
