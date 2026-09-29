@@ -19,7 +19,7 @@ import json
 from datetime import date
 from functools import lru_cache
 from statistics import mean
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
 
@@ -37,10 +37,12 @@ DEMO_SITES: List[Dict[str, Any]] = [
     dict(id="PS-PW-3308", code="602961", sector="Power", display_state="Odisha",
          display_name="Talcher Thermal Power Station Stage III (2×660 MW)",
          lat=20.9497, lng=85.2337, zoom=15, aoi=None,
+         no_sat_reason="The new units can't be told apart from the existing plant and town around them at this resolution.",
          before_date="2026-02-12", after_date="2026-08-09", illustrative_gap=23.0),
     dict(id="PS-RL-2340", code="705429", sector="Railways", display_state="Uttarakhand",
          display_name="Rishikesh–Karnaprayag New Rail Line (125 km)",
          lat=30.2043, lng=78.8081, zoom=15, aoi=None,
+         no_sat_reason="Most of this rail line runs through tunnels, which satellites can't see.",
          before_date="2026-02-09", after_date="2026-08-08", illustrative_gap=16.9),
     dict(id="PS-WT-4471", code="701415", sector="Water", display_state="Andhra Pradesh",
          display_name="Polavaram Irrigation Project",
@@ -61,14 +63,17 @@ DEMO_SITES: List[Dict[str, Any]] = [
     dict(id="PS-RD-1088", code="618618", sector="Roads", display_state="Punjab",
          display_name="Amritsar–Bathinda Greenfield Highway, Pkg-3 (NH-754A)",
          lat=30.5476, lng=74.9455, zoom=14, aoi=None,
+         no_sat_reason="The highway alignment isn't visible in these images.",
          before_date="2026-02-19", after_date="2026-08-13", illustrative_gap=4.2),
     dict(id="PS-PW-3355", code="612134", sector="Power", display_state="Rajasthan",
          display_name="Rajasthan REZ Ph-IV Transmission, Bikaner Complex (Part A)",
          lat=27.9333, lng=74.1667, zoom=14, aoi=None,
+         no_sat_reason="Transmission towers and lines are too thin to see at this resolution.",
          before_date="2026-02-21", after_date="2026-08-15", illustrative_gap=1.7),
     dict(id="PS-RL-2502", code="702628", sector="Railways", display_state="Uttar Pradesh",
          display_name="Kanpur Metro Rail Project",
          lat=26.4499, lng=80.3319, zoom=15, aoi=None,
+         no_sat_reason="The metro corridor runs through dense city blocks, so its works can't be separated from the buildings around them.",
          before_date="2026-02-17", after_date="2026-08-14", illustrative_gap=2.4),
     dict(id="PS-RL-2401", code="705237", sector="Railways", display_state="GJ, HR, MH, RJ, UP",
          display_name="Western Dedicated Freight Corridor (Dadri terminal)",
@@ -219,3 +224,18 @@ def site_aoi(project_id: str) -> Optional[List[float]]:
         if site["id"] == project_id:
             return site["aoi"]
     return None
+
+
+def evidence_route(project_id: str) -> Tuple[str, Optional[str]]:
+    """
+    Which independent evidence can verify this project:
+      "satellite"   — its structure is identifiable in the imagery
+      "field_photo" — it isn't (tunnels, thin lines, dense city), so a
+                      geotagged site photo is the required evidence
+    """
+    for site in DEMO_SITES:
+        if site["id"] == project_id:
+            if site["aoi"]:
+                return "satellite", None
+            return "field_photo", site.get("no_sat_reason") or "The structure isn't identifiable in the imagery."
+    return "field_photo", "No site imagery is registered for this project."

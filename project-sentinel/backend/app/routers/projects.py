@@ -14,7 +14,7 @@ from app.schemas.project import (
     SiteImagerySchema,
 )
 from app.services.risk_engine import RiskEngine
-from app.services.demo_registry import build_demo_seed, site_aoi
+from app.services.demo_registry import build_demo_seed, site_aoi, evidence_route
 from app.services.source_page_service import render_source_page
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -59,6 +59,8 @@ async def list_projects(
         response.append(
             ProjectRecordResponse(
                 id=p.id,
+                evidenceRoute=evidence_route(p.id)[0],
+                evidenceReason=evidence_route(p.id)[1],
                 name=p.name,
                 sector=p.sector,  # type: ignore
                 state=p.state,
@@ -137,6 +139,8 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
 
     return ProjectDetailResponse(
         id=project.id,
+        evidenceRoute=evidence_route(project.id)[0],
+        evidenceReason=evidence_route(project.id)[1],
         name=project.name,
         sector=project.sector,  # type: ignore
         state=project.state,

@@ -41,6 +41,8 @@ function Index() {
   const original = projects.reduce((a, p) => a + (p.originalCost || 0), 0);
   const widest = [...projects].sort((a, b) => Math.abs(progressGap(b)) - Math.abs(progressGap(a)))[0];
   const flag = (k: string) => dq?.flags?.[k] ?? 0;
+  const satCount = projects.filter((p) => p.evidenceRoute === "satellite").length;
+  const photoCount = projects.length - satCount;
 
   return (
     <div>
@@ -85,6 +87,11 @@ function Index() {
                   "Cost overrun",
                   inrCompact(overrun),
                   original ? `+${Math.round((overrun / original) * 100)}% over original cost` : "",
+                ],
+                [
+                  "Evidence route",
+                  `${satCount} satellite · ${photoCount} photo`,
+                  "tunnels, lines and dense-city works need site photos",
                 ],
                 [
                   "Report rows flagged",
@@ -176,7 +183,7 @@ function Index() {
           {[
             ["01 · Extract", "Every project row in the flash report becomes a typed record — with its PDF page kept alongside."],
             ["02 · Audit", "The report is checked against itself: progress without spending, spending beyond budget, dates that run backwards."],
-            ["03 · Verify", "Site imagery and site photos give a second opinion the implementing agency doesn't control."],
+            ["03 · Verify", "Each project is routed to evidence that can actually see it: satellite imagery where its structure is visible, a geotagged site photo where it isn't (tunnels, transmission lines, dense cities)."],
             ["04 · Escalate", `A reported-vs-verified gap of ${GAP_THRESHOLD}+ points, or a high score, surfaces for review with a drafted clarification request.`],
           ].map(([t, d]) => (
             <div key={t} className="px-6 py-10">

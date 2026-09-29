@@ -35,7 +35,7 @@ import {
   ProjectHistoryResponse,
   ScenarioResponse,
 } from "@/lib/api";
-import type { ProjectRecord } from "@/data/projects";
+import type { ProjectRecord, EvidenceRoute } from "@/data/projects";
 import { SourceRow, ReportNote, StatusPill, LoadError } from "@/components/provenance";
 
 export const Route = createFileRoute("/projects/$projectId")({
@@ -287,6 +287,7 @@ function ProjectDetail() {
           <span className="font-mono text-[11px] text-muted-foreground">
             {p.delayMonths ? `${p.delayMonths} mo behind schedule` : "on schedule"}
           </span>
+          <EvidenceTag route={p.evidenceRoute} photoDone={fromPhoto} />
           {riskBreakdown?.cluster_label && (
             <span className="font-mono text-[11px] border border-border px-2 py-0.5 text-muted-foreground bg-surface">
               {riskBreakdown.cluster_label}
@@ -629,6 +630,26 @@ function ProjectDetail() {
 
         {errors.imagery && <LoadError what="site imagery" error={errors.imagery} />}
 
+        {p.evidenceRoute === "field_photo" && (
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-l-2 border-sky-400 bg-sky-500/10 p-4">
+            <div className="max-w-3xl">
+              <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-sky-400">
+                Satellite can't verify this project · routed to field photos
+              </div>
+              <p className="mt-1 text-sm leading-relaxed text-foreground/90">
+                {p.evidenceReason} So Sentinel doesn't measure change here; a geotagged site photo that passes the
+                location and time checks is the required evidence for this project.
+              </p>
+            </div>
+            <a
+              href="#field-photo"
+              className="border border-sky-400 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-sky-400 hover:bg-sky-400 hover:text-background"
+            >
+              {fromPhoto ? "Photo evidence on file ↓" : "Upload site photo ↓"}
+            </a>
+          </div>
+        )}
+
         {site ? (
           <>
             <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -672,14 +693,25 @@ function ProjectDetail() {
       </section>
 
       {/* 05. Field-Photo Verification (YOLOv8) */}
-      <section className="border-b border-border py-12">
+      <section id="field-photo" className="scroll-mt-20 border-b border-border py-12">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="label-xs">Layer 05 · Ground Truth Field Photography</div>
             <h2 className="mt-3 text-2xl">Site-Photo Verification (YOLOv8)</h2>
           </div>
-          <div className="font-mono text-[11px] text-muted-foreground">
-            Team-trained YOLOv8 classifier
+          <div className="flex flex-col items-start gap-1.5 sm:items-end">
+            {p.evidenceRoute === "field_photo" && (
+              <span
+                className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${
+                  fromPhoto
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                    : "border-sky-500/40 bg-sky-500/10 text-sky-400"
+                }`}
+              >
+                {fromPhoto ? "Required evidence · on file" : "Required evidence for this project"}
+              </span>
+            )}
+            <span className="font-mono text-[11px] text-muted-foreground">Team-trained YOLOv8 classifier</span>
           </div>
         </div>
 
@@ -1712,5 +1744,21 @@ function IntegrityPanel({ integrity, updated }: { integrity: PhotoIntegrity; upd
         {integrity.camera?.startsWith("TEST") && " (Test file: its location and time were written by make_test_photos.py.)"}
       </p>
     </div>
+  );
+}
+
+/** Which evidence verifies this project: satellite imagery, or (when its structure can't be seen) a site photo. */
+function EvidenceTag({ route, photoDone }: { route?: EvidenceRoute | undefined; photoDone: boolean }) {
+  if (!route) return null;
+  const sat = route === "satellite";
+  return (
+    <span
+      className={`font-mono text-[11px] border px-2 py-0.5 ${
+        sat ? "border-border bg-surface text-muted-foreground" : "border-sky-500/40 bg-sky-500/10 text-sky-400"
+      }`}
+      title={sat ? "The structure is identifiable in satellite imagery" : "Not visible from satellite; a geotagged site photo is required"}
+    >
+      Evidence: {sat ? "satellite" : photoDone ? "field photo ✓" : "field photo required"}
+    </span>
   );
 }

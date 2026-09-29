@@ -67,8 +67,13 @@ export interface ProjectRecord {
   sourcePage?: number;
   alsoOnPages?: number[];
   reportNote?: string;
+  /** Which independent evidence can verify this project: its structure is visible in satellite imagery, or it isn't (tunnels, thin lines, dense city) and needs a geotagged site photo. */
+  evidenceRoute?: EvidenceRoute;
+  evidenceReason?: string | null;
   site?: SiteImagery;
 }
+
+export type EvidenceRoute = "satellite" | "field_photo";
 
 export const progressGap = (p: ProjectRecord) =>
   Number((p.reportedProgress - p.verifiedProgress).toFixed(1));

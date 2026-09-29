@@ -95,6 +95,7 @@ function ProjectsPage() {
                   "Spent ₹cr",
                   "Progress",
                   "Gap*",
+                  "Evidence",
                   "Delay",
                   "Source",
                   "Risk",
@@ -156,6 +157,15 @@ function ProjectsPage() {
                         {discVal.toFixed(1)} pts
                       </span>
                     </td>
+                    <td className="whitespace-nowrap px-3 py-3 font-mono text-[10px] uppercase tracking-wider">
+                      {p.evidenceRoute === "field_photo" ? (
+                        <span className="text-sky-400" title={p.evidenceReason ?? undefined}>
+                          {p.verifiedBasis === "photo" ? "Photo ✓" : "Photo req."}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Satellite</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 font-mono text-[12px] tabular-nums">
                       {p.delayMonths ? `${p.delayMonths} mo` : "—"}
                     </td>
@@ -187,7 +197,8 @@ function ProjectsPage() {
         <p className="mt-4 font-mono text-[11px] leading-relaxed text-muted-foreground">
           {projectsList.length} records · figures from the MoSPI PAIMANA flash report, December 2025 (Source = PDF
           page) · Delay = revised completion minus original · * Gap = reported minus verified progress; verified
-          figures are illustrative stand-ins until a site photo is verified.{" "}
+          figures are illustrative stand-ins until a site photo is verified · Evidence = what can verify the project:
+          satellite imagery where its structure is visible, otherwise a geotagged site photo.{" "}
           <Link to="/provenance" className="underline">What's real and what isn't →</Link>
         </p>
       </div>

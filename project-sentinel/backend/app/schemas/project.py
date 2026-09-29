@@ -68,6 +68,10 @@ class ProjectBase(BaseModel):
     reportNote: Optional[str] = None
     verifiedBasis: str = "illustrative"
 
+    # Which independent evidence can verify this project (see demo_registry.evidence_route)
+    evidenceRoute: Literal["satellite", "field_photo"] = "satellite"
+    evidenceReason: Optional[str] = None
+
 class ProjectRecordResponse(ProjectBase):
     pass
 
