@@ -112,5 +112,3 @@ The app reads the CDSE credentials with `os.getenv`, so either export them in yo
 - Copernicus Sentinel-2 data, provided through the Copernicus Data Space Ecosystem
 - Roboflow Universe construction datasets (CC BY 4.0)
 - Open-Meteo historical weather archive
-#   a x i o m  
- 
