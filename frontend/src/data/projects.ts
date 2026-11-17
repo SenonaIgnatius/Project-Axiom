@@ -143,7 +143,7 @@ export const MODULES: Module[] = [
     status: "real",
     summary:
       "Pixel-level difference between before and after images, searched only within the site's area so rivers or seasonal change elsewhere in frame aren't mistaken for construction.",
-    inputs: "Cached before/after site imagery (capture source to be confirmed), team-set site area",
+    inputs: "Copernicus Sentinel-2 L2A optical surface reflectance imagery (10m resolution), team-set site area",
     output: "Box around the strongest change within the site",
   },
   {
