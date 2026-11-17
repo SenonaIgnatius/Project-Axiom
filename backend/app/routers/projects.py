@@ -24,6 +24,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 async def list_projects(
     sector: Optional[str] = Query(None, description="Filter by sector (Roads, Railways, Power, Water)"),
     risk_level: Optional[str] = Query(None, description="Filter by risk level (low, medium, high)"),
+    limit: Optional[int] = Query(None, description="Max projects to return (e.g. 10, 50, or all 1392)"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -37,12 +38,15 @@ async def list_projects(
         stmt = stmt.where(Project.risk_level.ilike(risk_level))
 
     stmt = stmt.order_by(desc(Project.risk_score))
+    if limit:
+        stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     projects = result.scalars().all()
 
     if not projects:
         await seed_default_projects(db)
         result = await db.execute(stmt)
+        projects = result.scalars().all()
         projects = result.scalars().all()
 
     # Train clustering on loaded projects
@@ -323,6 +327,84 @@ async def seed_default_projects(db: AsyncSession) -> int:
         db.add(p)
         projects_list.append(p)
         count += 1
+
+    # Seed all remaining projects from the PAIMANA flash report extract
+    # Uses report-only factors with dynamically renormalized weights
+    try:
+        from app.services.demo_registry import dataset, schedule_features
+        all_paimana = dataset().get("projects", [])
+        seeded_codes = {p.project_code for p in projects_list if p.project_code}
+
+        for row in all_paimana:
+            code = row.get("project_code")
+            if not code or code in seeded_codes:
+                continue
+            seeded_codes.add(code)
+
+            row_id = f"PAIMANA-{code}"
+            stmt = select(Project).where(Project.id == row_id)
+            existing_row = (await db.execute(stmt)).scalar_one_or_none()
+            if existing_row:
+                continue
+
+            feats = schedule_features(row)
+            b_var = feats.get("budget_variance_pct", 0.0)
+            s_slip = feats.get("schedule_slippage", 0.0)
+            reported = float(row.get("physical_progress_pct") or 0.0)
+            orig_c = float(row.get("original_cost_cr") or 0.0)
+            rev_c = float(row.get("revised_cost_cr") or orig_c)
+            spent = float(row.get("expenditure_cr") or 0.0)
+            del_m = int(feats.get("delay_months", 0))
+
+            # Report-only formula: visual discrepancy & sensors unavailable -> renormalized 50/50
+            score, risk_lvl, stat, _ = RiskEngine.calculate_weighted_risk(
+                budget_variance_pct=b_var,
+                schedule_slippage=s_slip,
+                sensor_available=False,
+                rainfall_available=False,
+                discrepancy_basis="none",
+            )
+
+            p_row = Project(
+                id=row_id,
+                name=row.get("name") or f"Project {code}",
+                sector=row.get("sector") or "Other",
+                state=row.get("state") or "India",
+                sanctioned_cost=orig_c,
+                original_cost=orig_c,
+                revised_cost=rev_c,
+                expenditure=spent,
+                reported_progress=reported,
+                verified_progress=reported,
+                delay_months=del_m,
+                budget_variance_pct=b_var,
+                schedule_slippage=s_slip,
+                sector_baseline_deviation=0.0,
+                last_verified=row.get("approval_date") or "2025-12-31",
+                risk_score=score,
+                risk_level=risk_lvl,
+                status=stat,
+                latitude=20.5937,
+                longitude=78.9629,
+                zoom=12,
+                sat_verified=False,
+                data_source="real:data/paimana/flash_report.pdf",
+                project_code=code,
+                official_name=row.get("name"),
+                agency=row.get("agency"),
+                report_state=row.get("state"),
+                report_month="2025-12",
+                start_date=row.get("start_date"),
+                expected_end_date=row.get("original_completion"),
+                revised_end_date=row.get("revised_completion"),
+                source_page=row.get("source_page"),
+                also_on_pages=row.get("also_on_pages"),
+                verified_basis="none",
+            )
+            db.add(p_row)
+            count += 1
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Error seeding extended PAIMANA rows: {e}")
 
     if projects_list:
         RiskEngine.train_kmeans_and_validate(projects_list)

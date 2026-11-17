@@ -58,4 +58,5 @@ class ModelValidationResponse(BaseModel):
     cluster_means: Dict[str, float]
     logistic_regression_validation: Dict[str, Any]
     gradient_boosted_validation: Optional[Dict[str, Any]] = None
+    backtest_validation: Optional[Dict[str, Any]] = None
     data_source: str = "real:data/paimana/flash_report.pdf"

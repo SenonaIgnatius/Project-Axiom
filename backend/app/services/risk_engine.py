@@ -64,6 +64,7 @@ class RiskEngine:
         sensor_health_score: float = 85.0,
         rainfall_exposure: float = 10.0,
         photo_gap: Optional[float] = None,
+        sensor_available: bool = True,
         rainfall_available: bool = True,
         discrepancy_basis: str = "illustrative",
     ) -> Tuple[int, str, str, Dict[str, FactorDetail]]:
@@ -87,18 +88,31 @@ class RiskEngine:
         # 5. Rainfall exposure
         norm_rainfall = max(0.0, min(100.0, rainfall_exposure))
 
-        # Weights
-        w1 = cls.WEIGHTS["budget_variance"]
-        w2 = cls.WEIGHTS["schedule_slippage"]
-        w3 = cls.WEIGHTS["visual_discrepancy"]
-        w4 = cls.WEIGHTS["sensor_anomaly"]
-        w5 = cls.WEIGHTS["rainfall_exposure"]
+        # Dynamic weight renormalization when sensor/weather/discrepancy data is unavailable
+        active_weights = dict(cls.WEIGHTS)
+        if not sensor_available:
+            active_weights["sensor_anomaly"] = 0.0
+        if not rainfall_available:
+            active_weights["rainfall_exposure"] = 0.0
+        if discrepancy_basis == "none":
+            active_weights["visual_discrepancy"] = 0.0
+
+        total_w = sum(active_weights.values())
+        if total_w > 0:
+            for k in active_weights:
+                active_weights[k] = active_weights[k] / total_w
+
+        w1 = active_weights["budget_variance"]
+        w2 = active_weights["schedule_slippage"]
+        w3 = active_weights["visual_discrepancy"]
+        w4 = active_weights["sensor_anomaly"]
+        w5 = active_weights["rainfall_exposure"]
 
         contrib_budget = norm_budget * w1
         contrib_slippage = norm_slippage * w2
         contrib_discrepancy = norm_discrepancy * w3
-        contrib_sensor = norm_sensor * w4
-        contrib_rainfall = norm_rainfall * w5
+        contrib_sensor = norm_sensor * w4 if sensor_available else 0.0
+        contrib_rainfall = norm_rainfall * w5 if rainfall_available else 0.0
 
         composite_score = int(round(
             contrib_budget + contrib_slippage + contrib_discrepancy + contrib_sensor + contrib_rainfall
@@ -125,7 +139,7 @@ class RiskEngine:
             raw_value=round(disc_val, 1),
             unit="pts",
             normalized_score=round(norm_discrepancy, 1),
-            weight=w3,
+            weight=round(w3, 3),
             weighted_contribution=round(contrib_discrepancy, 1),
             description=(
                 "Gap between reported progress and the verified figure shown above it."
@@ -143,7 +157,7 @@ class RiskEngine:
                 raw_value=round(budget_variance_pct, 1),
                 unit="%",
                 normalized_score=round(norm_budget, 1),
-                weight=w1,
+                weight=round(w1, 3),
                 weighted_contribution=round(contrib_budget, 1),
                 description="Expenditure to date vs spend expected by now under the original cost and schedule.",
                 data_source="derived:PAIMANA flash report Dec 2025 (cost, expenditure, dates)",
@@ -153,7 +167,7 @@ class RiskEngine:
                 raw_value=round(schedule_slippage, 1),
                 unit="pts",
                 normalized_score=round(norm_slippage, 1),
-                weight=w2,
+                weight=round(w2, 3),
                 weighted_contribution=round(contrib_slippage, 1),
                 description="Share of the original timeline elapsed minus reported physical progress %.",
                 data_source="derived:PAIMANA flash report Dec 2025 (progress, dates)",
@@ -164,17 +178,19 @@ class RiskEngine:
                 raw_value=round(sensor_health_score, 1),
                 unit="/100",
                 normalized_score=round(norm_sensor, 1),
-                weight=w4,
+                weight=round(w4, 3),
                 weighted_contribution=round(contrib_sensor, 1),
-                description="Inverse health score from linear-asset structural sensors and ISO limits.",
-                data_source="simulated:data/sensors.csv",
+                description=("Inverse health score from linear-asset structural sensors and ISO limits."
+                             if sensor_available else
+                             "Sensor telemetry unavailable or uninstalled; factor weight renormalized across verifiable metrics."),
+                data_source="simulated:data/sensors.csv" if sensor_available else "unavailable (renormalized)",
             ),
             "rainfall_exposure": FactorDetail(
                 name="Rainfall & Weather Risk",
                 raw_value=round(rainfall_exposure, 1),
                 unit="index",
                 normalized_score=round(norm_rainfall, 1),
-                weight=w5,
+                weight=round(w5, 3),
                 weighted_contribution=round(contrib_rainfall, 1),
                 description=("30-day cumulative precipitation vs seasonal regional baseline."
                              if rainfall_available else
@@ -275,6 +291,9 @@ class RiskEngine:
         weather_data = WeatherService.get_weather_for_project(
             project.id, project.latitude, project.longitude, project_code=project.project_code
         )
+        # Per SIH specification: simulated sensors cannot influence headline scores.
+        # Unless physical telemetry is confirmed, sensor_available is False and weights renormalize.
+        has_real_sensors = getattr(project, "has_physical_sensors", False)
 
         # 5. Primary Formula Score
         score, risk_lvl, status, factors = cls.calculate_weighted_risk(
@@ -282,6 +301,7 @@ class RiskEngine:
             schedule_slippage=project.schedule_slippage,
             combined_discrepancy=combined_disc,
             sensor_health_score=asset_health["current_health_score"],
+            sensor_available=has_real_sensors,
             rainfall_exposure=weather_data["rainfall_risk_score"],
             rainfall_available=weather_data.get("available", True),
             discrepancy_basis=project.verified_basis or "illustrative",

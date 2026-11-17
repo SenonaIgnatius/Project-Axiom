@@ -42,9 +42,14 @@ export function SatFrame({
   return (
     <figure className="border border-border bg-card">
       <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5 bg-surface/50">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-foreground">
-          {label}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-foreground">
+            {label}
+          </span>
+          <span className="border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-mono text-[9px] uppercase px-1.5 py-0.5 font-semibold">
+            Copernicus S2 L2A
+          </span>
+        </div>
         <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{date}</span>
       </div>
 

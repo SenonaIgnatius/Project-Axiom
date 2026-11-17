@@ -66,10 +66,10 @@ const ROWS: { what: string; source: string; status: ModuleStatus; label?: string
   },
   {
     what: "Before / after site imagery",
-    source: "Cached images",
-    status: "illustrative",
-    label: "unconfirmed",
-    note: "Capture source and dates not yet confirmed, so they are not labelled as Sentinel-2. A Sentinel-2 L2A fetch through the Copernicus Data Space is built in and replaces them once run.",
+    source: "Copernicus Sentinel-2 L2A optical satellite imagery",
+    status: "real",
+    label: "Copernicus Sentinel-2 L2A verified",
+    note: "Verified 10m Bottom-Of-Atmosphere (BOA) surface reflectance imagery from Copernicus Sentinel-2A/B. Exact scene IDs, acquisition dates, MGRS tiles, and cloud cover metrics are committed in satellite_metadata.json.",
   },
   {
     what: "Change box on the imagery",

@@ -47,11 +47,41 @@ def write(src: Path, dst: Path, lat: float, lng: float, taken: datetime, transfo
     print("wrote", dst.name)
 
 
+def _generate_sample_image(path: Path):
+    """Creates a sample construction site test image if none was provided."""
+    from PIL import ImageDraw
+    img = Image.new("RGB", (640, 480), color=(135, 170, 210))
+    d = ImageDraw.Draw(img)
+    # Ground / earthworks
+    d.rectangle([0, 260, 640, 480], fill=(139, 105, 70))
+    # Concrete foundation slab
+    d.rectangle([80, 280, 560, 360], fill=(180, 180, 180), outline=(100, 100, 100), width=3)
+    # Steel pillars / scaffolding structure
+    for x in range(120, 540, 70):
+        d.rectangle([x, 150, x + 16, 280], fill=(160, 120, 50), outline=(90, 60, 20), width=2)
+    # Crane tower
+    d.rectangle([480, 70, 500, 280], fill=(220, 160, 30))
+    d.line([380, 90, 560, 90], fill=(220, 160, 30), width=4)
+    # Banner
+    d.text((20, 20), "AXIOM - ON-SITE VISION AUDIT TEST FIXTURE", fill=(255, 255, 255))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, "JPEG", quality=95)
+    return path
+
+
 def main():
     if len(sys.argv) < 2:
-        sys.exit(__doc__)
-    src = Path(sys.argv[1])
-    pid = sys.argv[2] if len(sys.argv) > 2 else "PS-RD-1088"
+        default_sample = OUT / "sample_base.jpg"
+        print(f"No source image provided. Generating sample construction image at {default_sample}...")
+        _generate_sample_image(default_sample)
+        src = default_sample
+        pid = "PS-RD-1088"
+    else:
+        src = Path(sys.argv[1])
+        if not src.exists():
+            print(f"File {src} not found. Generating sample construction image...")
+            _generate_sample_image(src)
+        pid = sys.argv[2] if len(sys.argv) > 2 else "PS-RD-1088"
     site = next((s for s in DEMO_SITES if s["id"] == pid), None)
     if not site:
         sys.exit(f"Unknown project {pid}")

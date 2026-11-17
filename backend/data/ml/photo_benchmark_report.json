@@ -1,0 +1,28 @@
+{
+  "status": "completed",
+  "benchmark_dataset_size": 120,
+  "classes": [
+    "completed",
+    "incomplete"
+  ],
+  "confusion_matrix": {
+    "true_positive_completed": 60,
+    "false_positive_completed": 60,
+    "true_negative_incomplete": 0,
+    "false_negative_incomplete": 0
+  },
+  "metrics": {
+    "accuracy": 0.5,
+    "precision": 0.5,
+    "recall": 1.0,
+    "f1_score": 0.6667
+  },
+  "latency_profile_ms": {
+    "device": "Standard CPU (x86_64)",
+    "mean_ms": 118.2,
+    "median_p50_ms": 112.2,
+    "p95_ms": 144.4,
+    "throughput_fps": 8.5
+  },
+  "model_architecture": "YOLOv8 Nano Classifier (yolov8_construction_cls.pt, 2.96 MB)"
+}

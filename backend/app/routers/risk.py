@@ -71,10 +71,21 @@ async def get_model_validation(db: AsyncSession = Depends(get_db)):
         ]
     }
 
+    # Load 8-month forward edition backtest metrics if available
+    backtest_data = None
+    backtest_file = settings.DATA_DIR / "ml" / "backtest_report.json"
+    if backtest_file.exists():
+        try:
+            import json
+            backtest_data = json.loads(backtest_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
     return ModelValidationResponse(
         status="validated",
         cluster_means=kmeans_res["cluster_means"],
         logistic_regression_validation=logistic_reg,
         gradient_boosted_validation=gbdt_val,
-        data_source="real:data/paimana/flash_report.pdf"
+        backtest_validation=backtest_data,
+        data_source="real:data/paimana/editions/(2025-12, 2026-06, 2026-08)"
     )

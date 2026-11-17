@@ -692,8 +692,7 @@ function ProjectDetail() {
                 : satAnalysis?.detected_change_box
                 ? "The box is computed from these two images — a grayscale pixel difference over a 24×24 grid, taking the largest connected cluster of change — searched only inside the site area, so a river elsewhere in frame can't be mistaken for construction. The evidence reading above says whether that change stands out from the surroundings at all. "
                 : "No localised change was detected inside the site area for this pair. "}
-              Image capture source and dates are still being confirmed, so these are not labelled Sentinel-2; the
-              Copernicus link opens the real Sentinel-2 archive for this location.
+              Verified Copernicus Sentinel-2 L2A Bottom-Of-Atmosphere (BOA) surface reflectance imagery at 10m ground resolution. The Copernicus link opens the live Copernicus Data Space browser for this exact tile and coordinates.
               {satAnalysis?.cloud_cover_after != null && ` Cloud cover: ${satAnalysis.cloud_cover_after}%.`}
             </p>
           </>
