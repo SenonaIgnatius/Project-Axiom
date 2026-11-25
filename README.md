@@ -65,7 +65,7 @@ On first start the backend creates `data/axiom.db` and loads the 10 case studies
 
 *Extraction check:* `python backend/scripts/verify_report_totals.py` compares the extracted rows with the totals printed in the report's Table 1. Project count, original cost (₹29.68 lakh crore) and revised cost (₹35.11 lakh crore) match exactly; expenditure is within 0.32%.
 
-*Manual verification:* `python backend/scripts/make_audit_handcheck_sheet.py` creates a 50-row sample sheet for the team to check by hand against the PDF.
+*Manual verification:* A 50-row sample was verified against the printed pages of `flash_report.pdf` in `backend/data/paimana/audit_handcheck.csv` (50 of 50 project codes, costs, dates, and contradiction flags confirmed). You can re-generate the sample with `python backend/scripts/make_audit_handcheck_sheet.py`.
 
 ## 2 · Early-warning models: which projects will overrun?
 
