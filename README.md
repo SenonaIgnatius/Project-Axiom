@@ -1,171 +1,143 @@
 # Project Axiom
 
-> **Independent Progress Verification & Risk Early-Warning Engine for Public Infrastructure**  
-> Smart India Hackathon (SIH 2026) — Problem Statement **SIH26103**  
-> Built by **Team Nyx** · Repository: [https://github.com/SenonaIgnatius/Project-Axiom](https://github.com/SenonaIgnatius/Project-Axiom)  
-> **Repository Topics:** `infrastructure-monitoring`, `satellite-imagery`, `copernicus-sentinel-2`, `yolov8`, `xgboost`, `mospi-paimana`, `sih-2026`, `explainable-ai`
+**Independent checks on self-reported government infrastructure progress.**
+Smart India Hackathon 2026 · Problem statement **SIH26103** (MoSPI) · Built by **Team Nyx**
+
+![Axiom overview](docs/screenshots/overview.png)
+
+Every month MoSPI's PAIMANA flash report lists the cost, spending and physical progress of India's large central-sector projects. Every one of those numbers is reported by the agency building the project. Axiom asks three questions about the report:
+
+1. **Does the report agree with itself?** Six consistency checks run over all 1,392 projects in the December 2025 edition. 595 projects have figures that contradict each other, and every flag links to its page in the government PDF.
+2. **Which projects will overrun?** Cost- and time-overrun early-warning models are trained on the same 1,392 projects, using only facts known on the day a project is approved, and compared against a conventional statistical baseline.
+3. **Does independent evidence agree?** For 10 case studies, satellite imagery or geotagged site photos are checked against what the agency reported. Every photo is checked for location, capture time and duplicates before it can change a score.
+
+Every figure in the console is labelled **real** (printed in the report or fetched from a public source), **derived** (computed from real figures), or **simulated / illustrative**. The *Provenance* page lists each module and its status.
 
 ---
 
-## ⚡ 2-Minute Quickstart & Demo
+## Quick start
 
-Axiom verifies self-reported government infrastructure project reports (MoSPI PAIMANA flash reports) against evidence implementing agencies do not control: **Copernicus Sentinel-2 Level-2A satellite imagery** and **geotagged on-site computer vision (YOLOv8)**.
+**With Docker:**
 
-### Run Instantly with Docker Compose
 ```bash
-# 1. Clone repo
 git clone https://github.com/SenonaIgnatius/Project-Axiom.git
 cd Project-Axiom
-
-# 2. Download and verify model weights (SHA-256 validated)
-python backend/scripts/download_models.py
-
-# 3. Launch full stack (FastAPI backend on :8000, Web Console on :8080)
 docker compose up --build
 ```
-Open **[http://localhost:8080](http://localhost:8080)** in your browser. API docs are available at **[http://localhost:8000/docs](http://localhost:8000/docs)**.
 
-### Local Development Setup
+Open **http://localhost:8080**. API docs: http://localhost:8000/docs
+
+**Without Docker** (Python 3.11, Node 20+):
+
 ```bash
-# Backend (Python 3.11)
+# terminal 1
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/download_models.py
-uvicorn app.main:app --reload --port 8000
+python scripts/download_models.py # trained YOLOv8 weights (optional, see below)
+python -m uvicorn app.main:app --reload --port 8000
 
-# Frontend (Node 20, in a second terminal)
-cd ../frontend
+# terminal 2
+cd frontend
 npm install
 npm run dev -- --port 8080
 ```
 
-### 2-Minute Photo Integrity & Verification Walkthrough
+On first start the backend creates `data/axiom.db` and loads the 10 case studies. No API keys are needed.
+
+---
+
+## 1 · Report Audit: does the report agree with itself?
+
+![Report Audit](docs/screenshots/report-audit.png)
+
+| Check | What it catches |
+|---|---|
+| Progress with ₹0 spent | ≥ 90% physical progress but zero expenditure |
+| Spend above revised cost | cumulative expenditure exceeds the revised sanctioned cost |
+| Revised date before original | a "revised" deadline earlier than the original one |
+| Zero progress, zero spend | nothing happened more than a year after start |
+| Overdue, no revised date | past the original deadline with no new date |
+| Past revised deadline | past the revised deadline and still incomplete |
+
+**595 of 1,392 projects** are flagged. A flag means a row is internally inconsistent or needs a follow-up question, not that wrongdoing occurred. Each flag opens the matching page of `flash_report.pdf` with the row highlighted. The **All Projects** page lets you search, filter and sort every project in the report.
+
+*Extraction check:* `python backend/scripts/verify_report_totals.py` compares the extracted rows with the totals printed in the report's Table 1. Project count, original cost (₹29.68 lakh crore) and revised cost (₹35.11 lakh crore) match exactly; expenditure is within 0.32%.
+
+*Manual verification:* `python backend/scripts/make_audit_handcheck_sheet.py` creates a 50-row sample sheet for the team to check by hand against the PDF.
+
+## 2 · Early-warning models: which projects will overrun?
+
+![Models page](docs/screenshots/models.png)
+
+Trained on all 1,392 projects (`backend/scripts/train_overrun_models.py`). The inputs are **only facts known at approval**: sector, ministry, original cost, planned duration, the approval-to-start gap, and whether the project spans several states. Expenditure, progress and revised figures are never used as inputs, since they would give the answer away. Validation is repeated stratified 5-fold cross-validation, and every prediction shown in the app comes from a model that never saw that project.
+
+| Target | Logistic regression (statistics) | Random forest (ML, best) | Riskiest 10% that really overran | Base rate |
+|---|---|---|---|---|
+| Cost overrun ≥ 20% | ROC-AUC 0.74 | **0.77** | **41%** | 14% |
+| Delay ≥ 12 months | ROC-AUC 0.63 | **0.71** | **87%** | 42% |
+
+- **ML vs statistics** (asked for by SIH26103): the random forest beats logistic regression on both targets.
+- **Drivers** (permutation importance): the approval-to-start gap, project size and planned duration matter most.
+- **Early-warning watchlist:** 92 projects with top-10% predicted risk for an overrun the report doesn't show yet.
+
+## 3 · Independent evidence: 10 case studies
+
+Each case study is a real row from the report. Projects are routed to the evidence that can actually see them.
+
+**Satellite imagery** (5 projects whose structure is visible: dams, rail corridors, roads):
+
+![Satellite evidence](docs/screenshots/satellite.png)
+
+- The search for change runs only inside the located site area, so a river or town elsewhere in the frame can't be mistaken for construction.
+- The two images are brightness-matched first, and the site's change is compared with the change in the surrounding land. Subansiri reads **1.52×**, a clear site-specific change.
+- This shows *whether* a site changed. A pixel comparison cannot measure percent complete, so it isn't used as one.
+
+**Geotagged site photos** (5 projects satellites can't verify: tunnels, transmission lines, dense-city metro):
+
+![Evidence routing](docs/screenshots/evidence-routing.png)
+
+Before a photo can change a project's verified progress, `photo_integrity_service.py` checks three things:
+- whether its EXIF GPS location is within the sector's radius of the site,
+- whether it was taken after the project started and within the last 180 days,
+- whether its perceptual hash matches an earlier upload.
+
+A failing photo is still classified and shown, but it cannot move the score. `scripts/make_test_photos.py` makes labelled test copies (on site, 2,000 km away, too old) for demos.
+
+**Transparent risk score:** budget variance 30%, schedule slippage 30%, reported-vs-verified gap 20%, sensors 10%, rainfall 10%. When sensor or rainfall data is unavailable, its weight drops to zero and the rest renormalise. `scripts/weight_sensitivity_check.py` shows the project ranking barely changes under ±20% weight changes (mean Spearman ρ = 0.98).
+
+---
+
+## Honest limitations
+
+- **Satellite images** are a committed cache of before/after pictures. Some carry © Google watermarks, so they're credited to Google and **not** labelled Sentinel-2. `app/services/satellite_imagery_service.py` can fetch real Sentinel-2 L2A scenes from the Copernicus Data Space with free CDSE credentials (`backend/.env`), but the cache hasn't been regenerated that way yet.
+- **One report edition.** The models use the December 2025 flash report. The report lists only *ongoing* projects, so projects that finished on time are missing. Later real editions would allow a true forward test, which is the next step.
+- **The photo classifier is small:** 30 training and 10 validation images. Its weights come from a GitHub release via `scripts/download_models.py`; without them it falls back to the generic `yolov8n-cls`.
+- **Sensors are simulated** (no physical sensors exist), and the escalation notice is a draft that is never sent. Both are labelled as such in the app.
+- **The verified-progress figure** for each case study is an illustrative stand-in until a site photo passes the integrity checks.
+
+## Tests
+
 ```bash
-# Generate test fixtures (recent on-site photo, wrong location, and expired photo)
-python backend/scripts/make_test_photos.py
-
-# Expected test fixtures in backend/data/test_photos/:
-#   PS-RD-1088_TEST_on_site.jpg    -> Verified (GPS ~1 km from site, taken 10 days ago)
-#   PS-RD-1088_TEST_elsewhere.jpg  -> Rejected by PhotoIntegrityService (GPS in Chennai)
-#   PS-RD-1088_TEST_old.jpg        -> Rejected by PhotoIntegrityService (Captured > 180 days ago)
-```
-1. Open project `PS-RD-1088` (Amritsar–Bathinda Greenfield Highway) in the console.
-2. Drag and drop `PS-RD-1088_TEST_on_site.jpg` into the Photo Upload pane.
-3. Observe YOLOv8 classify structural elements and machinery, recalculate the photo-verified progress estimate, and dynamically update the transparent composite risk score.
-
----
-
-## 📊 Real Forward Backtest (Dec 2025 → Aug 2026)
-
-To validate early-warning predictive capabilities beyond cross-sectional metrics, Axiom was evaluated on an **8-month forward backtest across all 1,392 monitored PAIMANA projects**, comparing predictions generated strictly at **December 2025** against actual observed outcomes in **August 2026**.
-
-* Ground Truth Definition: A project slipped if its revised completion date was pushed back by $\ge 3$ months between Dec 2025 and Aug 2026, or if it remained stalled past its target deadline. Base rate of critical slippage across the portfolio: **60.1%**.
-* Evaluated against:
-  1. **Axiom Early-Warning Model** (Multimodal schedule slippage & expenditure velocity)
-  2. **Naive Baseline** (Ranked purely by existing reported delay in months)
-  3. **Random Prioritization** (Uniform baseline)
-
-### Empirical Backtest Performance
-| Prioritization Cutoff | Projects Flagged ($k$) | Axiom Precision@k | Naive Precision@k | Lift vs Random | Lift vs Naive Baseline |
-|---|---|---|---|---|---|
-| **Top 5%** | 70 | **65.7%** | 62.9% | **1.09x** | **1.05x** |
-| **Top 10%** | 139 | **67.6%** | 66.9% | **1.13x** | **1.01x** |
-| **Top 15%** | 209 | **70.3%** | 65.1% | **1.17x** | **1.08x** |
-| **Top 20%** | 278 | **64.7%** | 66.5% | **1.08x** | 0.97x |
-| **Top 30%** | 418 | **61.2%** | 68.7% | **1.02x** | 0.89x |
-
-* **Overall AUROC:** Axiom = 0.582, Naive = 0.640
-* **Average Precision (PR-AUC):** Axiom = **0.645** vs Naive = 0.663
-* **Live API Validation:** Accessible at `GET /api/model-validation` (returns empirical backtest report and cross-edition metrics).
-* **Model Retraining:** `app/ml/predictive_model.py` is trained directly on the real 1,392 project features and forward edition outcomes, completely replacing synthetic sample generators.
-* Run backtest script: `python backend/scripts/run_backtest.py`
-
----
-
-## 🛰️ Verified Copernicus Sentinel-2 L2A Satellite Integration
-
-Axiom integrates European Space Agency (ESA) Copernicus Sentinel-2 Level-2A (Bottom-Of-Atmosphere) optical surface reflectance imagery at **10m spatial resolution**.
-
-* **Cache Refresh & Verification:** `python backend/scripts/refresh_satellite_cache.py` audits committed imagery, queries Copernicus Data Space Ecosystem (CDSE) metadata, and exports `backend/data/satellite_cache/satellite_metadata.json`.
-* **Committed Metadata:** Includes exact Copernicus Product Scene IDs, MGRS orbital tiles, UTC timestamps, and cloud cover metrics (< 5% cloud cover).
-
-### Subansiri River Turbidity & Orbital Tile-Seam False Positive Mitigation
-As admitted in field evaluations, the Subansiri Lower Hydroelectric Project (`PS-PW-3390`, code `602096`) features significant seasonal river water-turbidity shifts (emerald green in dry season to silt brown during monsoon) and orbital tile seams. Unconstrained full-frame image difference falsely alerts on river silt rather than construction progress.
-Axiom solves this through:
-1. **AOI Bounding Box Constraint:** `[76, 48, 99, 92] %` isolates the concrete dam crest and spillway, strictly excluding the downstream water surface.
-2. **Site-vs-Surroundings Contrast Ratio (`STRONG_RATIO = 1.3`):** Compares change inside the site area to the background frame. When seasonal silt alters the entire tile, the contrast ratio remains low, preventing false positive alarms.
-3. **Automated Test:** Tested and verified in `backend/tests/test_satellite_edge_cases.py`.
-
----
-
-## 🔍 Report Audit Validation (595 of 1,392 Projects)
-
-Axiom’s Report Consistency Engine audits every row in the MoSPI PAIMANA Flash Report across six deterministic data-quality rules:
-1. Progress with ₹0 spent ($\ge 90\%$ physical progress against ₹0 cumulative expenditure)
-2. Cumulative spend exceeding revised sanctioned cost
-3. Revised completion date earlier than original target date
-4. Stalled projects: 0% progress and ₹0 spent $> 1$ year after start date
-5. Overdue projects with no revised deadline
-6. Projects past revised deadline and incomplete
-
-* **Headline Finding:** **554 to 595 of 1,392 projects** contain self-contradicting or anomalous figures in the official publication.
-* **Hand-Checked Audit Sample:** 50 flagged rows across diverse sectors were hand-verified against the raw page tables in `flash_report.pdf`.
-* **Confirmation Rate:** **50 / 50 confirmed (100.0% precision)**. Documented in `backend/data/paimana/audit_sample_50.json`.
-* Re-run audit verification: `python backend/scripts/validate_report_audit.py`.
-
----
-
-## 🎯 Computer Vision Benchmark & Weight Sensitivity
-
-### Field-Photo Classifier Benchmark (`scripts/benchmark_photo_pipeline.py`)
-* Evaluated across an expanded 120-sample test suite.
-* **Architecture:** YOLOv8 Nano Classifier (`yolov8_construction_cls.pt`, 2.96 MB) + YOLOv8 Detector (`yolov8_construction_detect.pt`, 6.21 MB).
-* **Latency Profile (Standard CPU):**
-  * **Mean Inference Latency:** **118.2 ms / image**
-  * **Median (P50):** 112.2 ms
-  * **P95 Latency:** 144.4 ms
-  * **Throughput:** ~8.5 frames/sec on single CPU thread.
-
-### Weight Sensitivity & Dynamic Renormalization (`scripts/weight_sensitivity_check.py`)
-* Baseline formula: $0.30 \times \text{Budget} + 0.30 \times \text{Schedule} + 0.20 \times \text{Discrepancy} + 0.10 \times \text{Sensor} + 0.10 \times \text{Rainfall}$.
-* Tested across $\pm 20\%$ perturbations across all 1,392 projects:
-  * Schedule-Heavy (35/25/20/10/10): Spearman $\rho = \mathbf{0.9482}$
-  * Budget-Heavy (35/25/20/10/10): Spearman $\rho = \mathbf{0.9927}$
-  * Discrepancy-Emphasized (25/25/30/10/10): Spearman $\rho = \mathbf{0.9929}$
-  * Pure Report Only (50/50/0/0/0): Spearman $\rho = \mathbf{0.9889}$
-  * **Mean Correlation:** $\mathbf{\rho = 0.9835}$ (Extremely High Stability).
-* **Simulated Sensor Renormalization:** In accordance with audit standards, when physical sensors are unavailable or uninstalled, sensor weight drops to **0.0** and the verifiable weights automatically renormalize to sum to 1.0 ($0.333 \times \text{Budget} + 0.333 \times \text{Schedule} + 0.222 \times \text{Discrepancy} + 0.111 \times \text{Rainfall}$). Simulated sensors can never influence a headline score.
-
----
-
-## 🗂️ Ranked Queue Across All 1,392 Projects
-
-* While the console features 10 fully enriched multi-modal case studies with before/after optical imagery, the ranked monitoring queue operates across **all 1,392 projects** in the PAIMANA report.
-* Projects without optical or sensor telemetry are scored using report-only factors with dynamically renormalized weights ($50\% \text{ Budget Variance} + 50\% \text{ Schedule Slippage}$).
-* Accessible via `GET /api/projects` and `GET /api/paimana/projects`.
-
----
-
-## 🧪 Testing & CI
-
-Continuous Integration runs on GitHub Actions (`.github/workflows/ci.yml`) on every push to `main`:
-* Automated checksum validation for computer vision weights (`scripts/download_models.py`)
-* Pytest suite covering risk engine renormalization, satellite edge-case rejection, and data quality checks
-* Frontend TypeScript compilation and production build check
-
-Run tests locally:
-```bash
-cd backend
-python -m pytest tests/ -p no:cacheprovider -v
+cd backend && python -m pytest -q tests
 ```
 
----
+The tests cover every console endpoint, the Report Audit totals, the models beating their baseline, photo integrity, risk-weight renormalisation, and satellite edge cases. GitHub Actions runs them, plus the frontend type-check and build, on every push.
 
-## 📜 License
+## Repository layout
 
-Project Axiom is open-source under the [MIT License](LICENSE).
-MoSPI PAIMANA Flash Report data is published under the Government of India Open Data License.
-Roboflow Construction Site Safety dataset used for vision pretraining under CC BY 4.0.
-Copernicus Sentinel data processed under the Copernicus Open Access Policy.
+| Folder | Contents |
+|---|---|
+| `backend/` | FastAPI API, risk engine, ML, PAIMANA extraction (`scripts/extract_paimana_dataset.py`) |
+| `backend/data/` | extracted report (`paimana/`), model results (`ml/`), cached site images |
+| `frontend/` | web console (TanStack Start, React 19, Tailwind v4) |
+
+## Data credits & license
+
+- MoSPI PAIMANA flash report, December 2025 (Government of India)
+- Satellite imagery: cached images, partly © Google; Copernicus Sentinel-2 via the Copernicus Data Space Ecosystem where fetched
+- Rainfall: Open-Meteo historical archive
+- Roboflow Universe construction datasets (CC BY 4.0)
+
+Code under the [MIT License](LICENSE).

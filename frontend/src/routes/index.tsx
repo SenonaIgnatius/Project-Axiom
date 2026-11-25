@@ -205,7 +205,7 @@ function Index() {
             ],
             [
               "Site imagery",
-              "Verified Copernicus Sentinel-2 L2A optical surface reflectance imagery (10m resolution) from the Copernicus Data Space Ecosystem, with exact scene IDs and capture timestamps.",
+              "Cached before/after images of each site (capture source still being confirmed). A Sentinel-2 fetch through the Copernicus Data Space is built in to replace them.",
             ],
             [
               "Rainfall",

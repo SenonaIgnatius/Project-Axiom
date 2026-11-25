@@ -61,24 +61,15 @@ async def get_satellite_change_detection(
         after_image_path = cache_row.after_image_path
         is_project_specific_pair = True
     else:
-        # Check committed Copernicus metadata
-        sat_meta_path = settings.DATA_DIR / "satellite_cache" / "satellite_metadata.json"
-        meta_info = {}
-        if sat_meta_path.exists():
-            try:
-                import json
-                meta_info = json.loads(sat_meta_path.read_text(encoding="utf-8")).get("sites", {}).get(project_id, {})
-            except Exception:
-                pass
-
-        image_source = "Copernicus Sentinel-2 L2A (Verified 10m Optical)"
-        before_date = meta_info.get("before_capture_utc") or project.before_date or "2026-02-12"
-        after_date = meta_info.get("after_capture_utc") or project.after_date or "2026-08-12"
-        cloud_cover_before = meta_info.get("cloud_cover_before_pct")
-        cloud_cover_after = meta_info.get("cloud_cover_after_pct")
-        cloud_cover_pct = cloud_cover_after
-        fetch_status = "verified_copernicus_l2a"
-        fetched_at = meta_info.get("after_capture_utc")
+        # Fallback: strictly check local filesystem for pre-existing static tiles without making network calls
+        image_source = "Cached site imagery (capture source not yet confirmed)"
+        before_date = project.before_date or "2024-03-10"
+        after_date = project.after_date or "2026-08-12"
+        cloud_cover_before = None
+        cloud_cover_after = None
+        cloud_cover_pct = None  # unknown for uncached imagery — never invented
+        fetch_status = "uncached_fallback"
+        fetched_at = None
 
         # Fallback location: the already-mounted satellite cache directory
         # (a separate "frontend/public/satellite" path was referenced here

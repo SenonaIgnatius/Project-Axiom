@@ -13,8 +13,18 @@ export const API_BASE: string = import.meta.env["VITE_API_URL"] || "http://local
 /** The backend's origin, for static files it serves outside /api (e.g. /satellite-cache). */
 export const BACKEND_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 
+/**
+ * During server-side rendering inside Docker, "localhost" is the frontend
+ * container itself, so SSR calls use INTERNAL_API_URL (e.g. http://backend:8000/api).
+ * The browser always uses API_BASE.
+ */
+const REQUEST_BASE: string =
+  (typeof window === "undefined" &&
+    (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.["INTERNAL_API_URL"]) ||
+  API_BASE;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const res = await fetch(`${REQUEST_BASE}${path}`, init);
   if (!res.ok) {
     let detail = res.statusText;
     try {

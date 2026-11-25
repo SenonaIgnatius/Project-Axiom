@@ -87,5 +87,5 @@ async def get_model_validation(db: AsyncSession = Depends(get_db)):
         logistic_regression_validation=logistic_reg,
         gradient_boosted_validation=gbdt_val,
         backtest_validation=backtest_data,
-        data_source="real:data/paimana/editions/(2025-12, 2026-06, 2026-08)"
+        data_source="real:data/paimana/flash_report.pdf"
     )

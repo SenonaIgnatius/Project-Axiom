@@ -98,8 +98,11 @@ class PredictiveRiskModel:
 
     def _initialize_and_train_baseline(self):
         """
-        Trains the Gradient-Boosted Decision Trees on real MoSPI PAIMANA project features
-        and empirical edition-to-edition outcomes (Dec 2025 -> Aug 2026).
+        Legacy demonstration model behind the `predictive_ml` field of the risk API.
+        It trains on edition-to-edition outcomes only if a later REAL PAIMANA edition
+        (paimana_2026-08.json) is present in data/paimana/editions/; otherwise it falls
+        back to a synthetic distribution. The console's early-warning predictions come
+        from scripts/train_overrun_models.py instead (real data, cross-validated).
         """
         from app.config import settings
         dec_path = settings.DATA_DIR / "paimana" / "editions" / "paimana_2025-12.json"
